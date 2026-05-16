@@ -1,0 +1,99 @@
+# Dependabot config.
+#
+# Pinning policy (REQUIRED):
+#   - GitHub Actions MUST be pinned by full commit SHA, with the human-readable
+#     version as a trailing comment (e.g. `actions/checkout@<sha>  # v4`).
+#     Dependabot preserves SHA pinning and updates the trailing version comment
+#     on bump PRs; do not switch back to tag refs.
+#   - npm dependencies are pinned to exact versions via `pnpm-lock.yaml`. PRs
+#     that loosen ranges (^, ~, *) will be rejected.
+#   - Docker base images are pinned by digest (`image@sha256:...`) where
+#     practical; otherwise by immutable tag.
+#
+# `versioning-strategy: increase` keeps the lockfile + manifest in sync on
+# every bump so the pin moves forward atomically.
+
+version: 2
+updates:
+  # Root npm package (Mastra workflow, CLI, tests)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Johannesburg"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+      - npm
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      prod-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Major bumps reviewed manually; security advisories still come through.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # Cloudflare Worker (separate lockfile)
+  - package-ecosystem: npm
+    directory: "/integrations/cloudflare-worker"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Johannesburg"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+      - npm
+      - worker
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # GitHub Actions — SHA-pinned. Dependabot keeps the SHA pin and refreshes
+  # the trailing `# v<x>` comment when bumping. Do not edit workflow `uses:`
+  # lines to use tag refs.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Johannesburg"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+
+  # Container base image — pin by digest where possible.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Johannesburg"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker

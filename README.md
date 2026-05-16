@@ -278,9 +278,73 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 
 ---
 
+## Contributing
+
+PRs welcome. Wrily is small enough that a single round of review usually clears most changes — keep them focused and they'll land faster.
+
+### Quick start
+
+```bash
+git clone git@github.com:barryroodt/wrily.git
+cd wrily
+pnpm install
+pnpm test          # vitest, full workflow + unit coverage
+pnpm typecheck     # strict tsc pass
+```
+
+Node 22+ and `pnpm@9.12.0` (root) / `pnpm@10.33.4` (cloudflare-worker subdir) are pinned via `packageManager`. Use Corepack: `corepack enable`.
+
+### Branching + commits
+
+- Branch off `main`. Short kebab-case branch names (`fix-watermark-dedupe`, `feat-criticality-tier`).
+- One logical change per PR. Refactors land separately from behavior changes.
+- Conventional Commit-ish prefixes are fine but not enforced: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+- Keep diffs reviewable. Anything past ~400 lines should explain why in the PR description.
+
+### What needs to pass
+
+- `pnpm test` — full vitest suite. Add coverage for the change; tests live next to the code they cover.
+- `pnpm typecheck` — strict TS, no `any` escape hatches without a `// reason:` line.
+- `smoke.yml` — container build smoke test runs in CI.
+- For Worker / integration changes, run that subdir's test + typecheck too.
+
+### Style
+
+- Match surrounding code. No drive-by reformatting in feature PRs.
+- Prefer Zod schemas at boundaries; trust internal types past that point.
+- Errors get typed classes (`AgentTimeoutError`, `AgentBudgetExceededError`) — re-use rather than ad-hoc `throw new Error`.
+- New env vars: document in `src/config/env.ts` schema + the env-vars table in this README.
+
+### Dependency pinning
+
+Wrily's supply chain is locked down. PRs that loosen pins will be rejected.
+
+- **GitHub Actions** — pin by full commit SHA with the version as a trailing comment: `uses: actions/checkout@<sha>  # v4`. Never use tag refs (`@v4`, `@main`). Dependabot keeps the SHA and refreshes the comment.
+- **npm** — exact versions in `package.json`, `pnpm-lock.yaml` committed. No `^` / `~` / `*` ranges.
+- **Docker base images** — pin by digest (`image@sha256:…`) where possible, immutable tag otherwise.
+
+Dependabot config is in [`.github/dependabot.yml`](.github/dependabot.yml).
+
+### Adding a skill
+
+See [docs/writing-skills.md](docs/writing-skills.md). Specialist skills land under `skills/`, repo-context skills are consumer-side (`.claude/skills/`).
+
+### Reporting bugs / requesting features
+
+- Bugs: open an issue with a reproducer (PR URL with `DRY_RUN=true` output if possible).
+- Features: open a discussion or draft an issue with the problem statement first — implementation discussion follows.
+- Security: see [SECURITY.md](SECURITY.md). Do not file security reports as public issues.
+
+### Maintainers
+
+`@barryroodt` is the current maintainer. Review SLA is best-effort; ping in the PR if it's been idle more than a week.
+
+---
+
 ## Docs
 
 - [Adoption guide](docs/adoption.md) — onboarding playbook
 - [Webhook architecture](docs/design/webhook-architecture.md) — full design + security model
 - [Writing skills](docs/writing-skills.md) — how to write custom reviewer skills
 - [`integrations/cloudflare-worker/RUNBOOK.md`](integrations/cloudflare-worker/RUNBOOK.md) — Worker setup, deploy, rotate, observe
+- [Security policy](SECURITY.md) — reporting vulnerabilities, supported versions, scope
