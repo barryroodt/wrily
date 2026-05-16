@@ -1,6 +1,6 @@
 # Multi-stage build for Wrily.
 
-FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
+FROM node:26-slim@sha256:424cafd2a035ed2b2d74acc3142b68b426fb62a47742c80a75e7117db02d6b30 AS builder
 
 WORKDIR /build
 
@@ -14,7 +14,7 @@ COPY src/ ./src/
 RUN pnpm build
 
 # ----- Runtime image -----
-FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
+FROM node:26-slim@sha256:424cafd2a035ed2b2d74acc3142b68b426fb62a47742c80a75e7117db02d6b30
 
 # System deps: git for diff/clone, jq for ad-hoc JSON ops, gh for fixture
 # clone helpers, ca-certificates+curl for the gh apt key fetch.
