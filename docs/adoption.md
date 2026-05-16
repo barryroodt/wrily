@@ -1,12 +1,14 @@
 # Wrily — Adoption Guide
 
+> This guide is for **repo owners** in an org that already has Wrily set up. If you're an org admin standing up Wrily for the first time, start with [self-hosting.md](self-hosting.md).
+
 ## Quick Start
 
-Ask a Wrily admin to **install the Wrily GitHub App** on your repo. That's it. Open a PR and Wrily reviews it automatically.
+Ask your org's Wrily admin to **install the GitHub App** on your repo. That's it. Open a PR and Wrily reviews it automatically.
 
-No workflow YAML. No secrets. No per-repo Actions/GHCR permissions. No `ANTHROPIC_API_KEY` to plumb.
+No workflow YAML. No secrets. No per-repo Actions/GHCR permissions. No `ANTHROPIC_API_KEY` to plumb — your org admin handles that once.
 
-Behind the scenes: GitHub delivers the `pull_request` event to the App's webhook → a Cloudflare Worker verifies the HMAC, mints minimum-scope installation tokens (Wrily runner / consumer / optional shared skills), and dispatches `repository_dispatch(review-pr)` at `barryroodt/wrily` → Wrily's Actions workflow clones the consumer repo and optional shared skills repo, runs the review, posts comments and a `Wrily / review` Check Run back to the PR using the consumer-scoped token. See `docs/design/webhook-architecture.md` for the full flow + security model.
+Behind the scenes: GitHub delivers the `pull_request` event to the App's webhook → a Cloudflare Worker verifies the HMAC, mints minimum-scope installation tokens (Wrily runner / consumer / optional shared skills), and dispatches `repository_dispatch(review-pr)` at your org's fork of Wrily → Wrily's Actions workflow clones the consumer repo and optional shared skills repo, runs the review, posts comments and a `Wrily / review` Check Run back to the PR using the consumer-scoped token. See `docs/design/webhook-architecture.md` for the full flow + security model.
 
 ## Verification
 

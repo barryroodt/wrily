@@ -10,20 +10,37 @@ AI-powered code review agent using Claude Code.
 - **Reply-as-feedback** — Wrily honors author disputes on prior comments and re-running on demand via `/wrily review`. See [adoption.md](./docs/adoption.md).
 - **Configurable sensitivity** — Filter findings by severity (Critical, Important, Minor)
 
-Two ways to use it:
+Wrily is self-hosted — there is no shared Wrily service. Each org runs its own GitHub App + webhook receiver against its own fork of this repo, so your code never traverses someone else's infrastructure.
 
 | Path | When | Setup |
 |---|---|---|
-| **GitHub App** (recommended) | Continuous PR reviews on an organization repo | Org admin installs the App on the repo. Zero per-repo config required. |
+| **GitHub App** (recommended) | Continuous PR reviews across an org | Org admin sets up the App + Worker once (~30 min). Consumer repos opt in with zero config. |
 | **Local CLI** | Ad-hoc / cross-org / pre-PR review | `git clone` + `./wrily <owner>/<repo> <pr>` |
 
 ---
 
-## GitHub App adoption (new repos)
+## Self-hosting (org admins)
+
+Stand up your own Wrily instance in ~30 minutes:
+
+1. **Fork** this repo into your org and tag a `v0.1.0` release so the container image publishes to `ghcr.io/<your-org>/wrily`.
+2. **Create a GitHub App** in your org with the permissions Wrily needs (`Contents: Read`, `Pull requests: Read/Write`, `Checks: Write`, `Issues: Read/Write`, `Actions: Write`) and subscribe it to `pull_request` + `issue_comment` events.
+3. **Deploy the Cloudflare Worker** in [`integrations/cloudflare-worker/`](integrations/cloudflare-worker/) (or the n8n alternative). Set `WRILY_APP_PRIVATE_KEY` and `WRILY_WEBHOOK_SECRET` as Worker secrets.
+4. **Point the App** at the Worker's `*.workers.dev` URL and install it on your consumer repos.
+
+Step-by-step walkthrough with every command, screenshot-worthy field, and verification checklist: **[docs/self-hosting.md](docs/self-hosting.md)**.
+
+Operational details (rotation, observability, failure modes) live in the [Worker runbook](integrations/cloudflare-worker/RUNBOOK.md).
+
+---
+
+## Using Wrily on a repo (consumers)
+
+Once an org admin has done the self-hosting setup above, individual repo owners just need to install the App and (optionally) tune a config file. Full consumer-facing guide: [docs/adoption.md](docs/adoption.md).
 
 ### 1. Install the App on your repo
 
-Org admin only. `https://github.com/organizations/<your-org>/settings/installations` → **Wrily** → **Configure** → **Repository access** → either add the new repo or switch to "All repositories". Save.
+`https://github.com/organizations/<your-org>/settings/installations` → **Wrily** → **Configure** → **Repository access** → either add the new repo or switch to "All repositories". Save.
 
 ### 2. Open a PR
 
@@ -343,7 +360,8 @@ See [docs/writing-skills.md](docs/writing-skills.md). Specialist skills land und
 
 ## Docs
 
-- [Adoption guide](docs/adoption.md) — onboarding playbook
+- [Self-hosting guide](docs/self-hosting.md) — fork, App creation, Worker deploy, verification (org admins)
+- [Adoption guide](docs/adoption.md) — consumer onboarding playbook (after self-hosting is set up)
 - [Webhook architecture](docs/design/webhook-architecture.md) — full design + security model
 - [Writing skills](docs/writing-skills.md) — how to write custom reviewer skills
 - [`integrations/cloudflare-worker/RUNBOOK.md`](integrations/cloudflare-worker/RUNBOOK.md) — Worker setup, deploy, rotate, observe
