@@ -1,6 +1,6 @@
 # Wrily
 
-AI-powered code review agent using Claude Code. Named after the workshop where code gets refined.
+AI-powered code review agent using Claude Code.
 
 ## Features
 
@@ -59,10 +59,10 @@ ignore:
 # are explicitly loaded into Claude's skill set for the review.
 shared_skills:
   - rust-pro
-  - metal-standards
+  - security-standards
 ```
 
-**Breaking default (2026-04-30):** `sensitivity:` defaults to `important`, so Minor / nit findings are no longer posted inline by default. Repos that want the previous behavior add `sensitivity: minor` to their `.wrily.yml`. `critical` is also available for repos that only want Critical findings inline.
+`sensitivity:` defaults to `important`, so Minor / nit findings are not posted inline. Set `sensitivity: minor` to surface every finding, or `sensitivity: critical` to limit inline comments to Critical findings only.
 
 ### Verification
 
@@ -284,4 +284,3 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 - [Webhook architecture](docs/design/webhook-architecture.md) — full design + security model
 - [Writing skills](docs/writing-skills.md) — how to write custom reviewer skills
 - [`integrations/cloudflare-worker/RUNBOOK.md`](integrations/cloudflare-worker/RUNBOOK.md) — Worker setup, deploy, rotate, observe
-- [Design spec](docs/superpowers/specs/2026-04-01-auto-reviewer-design.md) — original design document

@@ -28,7 +28,7 @@
 # Only listed skills are loaded — omit for none
 # shared_skills:
 #   - rust-pro
-#   - metal-standards
+#   - security-standards
 
 # Allow REQUEST_CHANGES reviews (default: false, only posts COMMENT)
 # request_changes: false

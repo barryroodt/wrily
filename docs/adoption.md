@@ -41,7 +41,7 @@ ignore:
 
 shared_skills:            # Opt-in org skills from your optional shared skills repo;
   - rust-pro              # this list controls which skills are explicitly loaded into Claude)
-  - metal-standards
+  - security-standards
 ```
 
 > **Glob patterns** in `ignore:` should use the recursive form (`**/*.lock`, `**/*.pb.go`) to match nested files. Single-`*` patterns may only match files at the repo root depending on the matcher. The recursive form is unambiguous.
@@ -63,7 +63,7 @@ Security findings and architectural disagreements always get full prose regardle
 | `important` (default) | Critical + Important posted inline; Minor hidden | Summary appends `N minor findings hidden — set sensitivity: minor in .wrily.yml to see` when `N > 0` |
 | `critical` | Only Critical posted inline; Important + Minor hidden | Summary appends `N important + M minor findings hidden — lower sensitivity in .wrily.yml to see` when either count is non-zero |
 
-**Breaking default (2026-04-30):** the default flipped from "all severities posted" to `sensitivity: important`. Repos that relied on receiving every Minor finding inline must add `sensitivity: minor` to `.wrily.yml`.
+The default is `sensitivity: important`. Repos that want every Minor finding inline must add `sensitivity: minor` to `.wrily.yml`.
 
 ### `CLAUDE.md` / `AGENTS.md`
 
