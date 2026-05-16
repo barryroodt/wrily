@@ -15,7 +15,7 @@
     "@mastra/core": "0.10.0",
     "@octokit/graphql": "8.1.1",
     "@octokit/rest": "21.0.2",
-    "yaml": "2.5.1",
+    "yaml": "2.8.3",
     "zod": "3.25.76"
   },
   "devDependencies": {
