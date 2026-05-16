@@ -1,0 +1,40 @@
+name: Container build smoke
+
+# Builds the new Mastra TS image and runs it with no env vars.
+# Pass condition: image exits non-zero with a Zod validation error in stderr,
+# proving env parsing fires before any other path. Fast (~60s) and cheap.
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Build container
+        run: docker build -t wrily-mastra:ci .
+
+      - name: Run with no env (expect Zod auth error)
+        run: |
+          set +e
+          docker run --rm wrily-mastra:ci > out.log 2> err.log
+          code=$?
+          set -e
+          echo "exit=$code"
+          if [ "$code" = "0" ]; then
+            echo "::error::expected non-zero exit with no env, got 0"
+            exit 1
+          fi
+          if ! grep -q "ZodError" err.log; then
+            echo "::error::expected ZodError in stderr"
+            cat err.log
+            exit 1
+          fi
+          echo "smoke ok: exited $code with ZodError as expected"

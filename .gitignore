@@ -1,0 +1,8 @@
+.env
+.worktrees/
+
+# Build artifacts
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo

@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# wrily — Review a pull request with AI
+#
+# Usage:
+#   ./wrily <owner/repo> <pr-number> [--post]
+#
+# Examples:
+#   ./wrily owner/repo 2209          # dry-run (default)
+#   ./wrily owner/repo 2209 --post   # post review to GitHub
+#   MODE=team ./wrily owner/repo 2209
+#
+# Prerequisites:
+#   - Docker
+#   - gh CLI (authenticated: gh auth login)
+#   - One of: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (in env or .env)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+DRY_RUN="${DRY_RUN:-true}"
+
+# Check for --post flag anywhere in args
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --post)
+      DRY_RUN="false"
+      ;;
+    --help|-h)
+      echo "wrily — Review a pull request with AI"
+      echo ""
+      echo "Usage:"
+      echo "  ./wrily <owner/repo> <pr-number> [--post]"
+      echo ""
+      echo "Arguments:"
+      echo "  owner/repo    GitHub repository (e.g., your-org/your-repo)"
+      echo "  pr-number     Pull request number"
+      echo "  --post        Post review to GitHub (default: dry-run to stdout)"
+      echo ""
+      echo "Environment:"
+      echo "  MODE=team        Force agent-team mode (default: auto)"
+      echo "  MODE=single      Force single-reviewer mode"
+      echo "  MODEL=sonnet     Use a different model (default: opus)"
+      echo "  MAX_BUDGET=10    Set budget cap (default: \$5 single / \$15 team)"
+      echo ""
+      echo "Authentication (set one, or add to .env):"
+      echo "  ANTHROPIC_API_KEY          API key from console.anthropic.com"
+      echo "  CLAUDE_CODE_OAUTH_TOKEN    OAuth token (run: claude setup-token)"
+      exit 0
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$arg")
+      ;;
+  esac
+done
+
+if [[ ${#POSITIONAL_ARGS[@]} -lt 2 ]]; then
+  echo "Usage: ./wrily <owner/repo> <pr-number> [--post]"
+  echo "       ./wrily --help for more info"
+  exit 1
+fi
+
+REPO="${POSITIONAL_ARGS[0]}"
+PR="${POSITIONAL_ARGS[1]}"
+
+echo "=== Wrily ==="
+echo "Repo:      ${REPO}"
+echo "PR:        #${PR}"
+
+# ---------------------------------------------------------------------------
+# Fetch PR metadata
+# ---------------------------------------------------------------------------
+echo ""
+echo "Fetching PR metadata..."
+
+PR_JSON=$(gh pr view "$PR" --repo "$REPO" --json headRefOid,baseRefName,headRefName,author 2>&1) || {
+  echo "ERROR: Failed to fetch PR #${PR} from ${REPO}"
+  echo "Make sure you're authenticated: gh auth status"
+  exit 1
+}
+
+COMMIT_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
+HEAD_BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+PR_AUTHOR_LOGIN=$(echo "$PR_JSON" | jq -r '.author.login // ""')
+
+echo "Branch:    ${HEAD_BRANCH}"
+echo "Base:      ${BASE_BRANCH}"
+echo "Commit:    ${COMMIT_SHA:0:8}"
+
+# ---------------------------------------------------------------------------
+# Authenticate
+# ---------------------------------------------------------------------------
+if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    source "${SCRIPT_DIR}/.env"
+  fi
+fi
+
+if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-$(claude auth status 2>/dev/null | sed -n 's/.*token: //p' || true)}"
+fi
+
+if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  echo ""
+  echo "ERROR: No authentication configured."
+  echo ""
+  echo "  Option 1: Set ANTHROPIC_API_KEY (from console.anthropic.com/settings/keys)"
+  echo "  Option 2: Set CLAUDE_CODE_OAUTH_TOKEN (run: claude setup-token)"
+  echo "  Option 3: Add either to .env in this directory"
+  exit 1
+fi
+
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  echo "Auth:      API key"
+else
+  echo "Auth:      OAuth token"
+fi
+
+GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
+if [[ -z "$GITHUB_TOKEN" ]]; then
+  echo "ERROR: No GitHub token. Run: gh auth login"
+  exit 1
+fi
+
+# Optional shared skills repository. In production the webhook receiver mints
+# a distinct installation-scoped token for this repository. Locally, default
+# SHARED_TOKEN to GITHUB_TOKEN only when SHARED_REPO is configured.
+SHARED_REPO="${SHARED_REPO:-}"
+if [[ -n "$SHARED_REPO" ]]; then
+  SHARED_TOKEN="${SHARED_TOKEN-$GITHUB_TOKEN}"
+else
+  SHARED_TOKEN="${SHARED_TOKEN:-}"
+fi
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+echo ""
+echo "Building Docker image..."
+docker build -t wrily "${SCRIPT_DIR}" --quiet
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+MODE="${MODE:-auto}"
+MODEL="${MODEL:-opus}"
+MAX_BUDGET="${MAX_BUDGET:-}"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo ""
+  echo "Running review (dry-run → stdout)..."
+else
+  echo ""
+  echo "Running review (posting to GitHub)..."
+fi
+echo "Mode: ${MODE} | Model: ${MODEL}${MAX_BUDGET:+ | Budget: \$${MAX_BUDGET}}"
+echo "---"
+
+AUTH_ARGS=()
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  AUTH_ARGS+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
+fi
+if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  AUTH_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}")
+fi
+
+docker run --rm \
+  "${AUTH_ARGS[@]}" \
+  -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+  -e SHARED_TOKEN="$SHARED_TOKEN" \
+  -e SHARED_REPO="$SHARED_REPO" \
+  -e PR_NUMBER="$PR" \
+  -e GITHUB_REPOSITORY="$REPO" \
+  -e BASE_BRANCH="$BASE_BRANCH" \
+  -e COMMIT_SHA="$COMMIT_SHA" \
+  -e DRY_RUN="$DRY_RUN" \
+  -e MODE="$MODE" \
+  -e MODEL="$MODEL" \
+  -e MAX_BUDGET="$MAX_BUDGET" \
+  -e SCOPE_OVERRIDE="${SCOPE_OVERRIDE:-}" \
+  -e REPLY_FEEDBACK="${REPLY_FEEDBACK:-}" \
+  -e PR_AUTHOR_LOGIN="$PR_AUTHOR_LOGIN" \
+  -e CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+  wrily

@@ -1,0 +1,54 @@
+# Wrily Configuration
+# Place as .wrily.yml in your repo root
+
+# Claude model to use (default: opus)
+# model: opus
+
+# Review mode: auto | single | team
+# - auto: uses team mode when diff touches 5+ directories (default)
+# - single: always use single-reviewer mode
+# - team: always use agent-team mode with parallel reviewers
+# mode: auto
+
+# Maximum USD budget per review
+# Default: $5 for single mode, $15 for team mode
+# max_budget_usd: 15
+
+# Directory count threshold for auto-switching to team mode (default: 5)
+# team_threshold: 5
+
+# Glob patterns to skip reviewing
+# ignore:
+#   - "*.lock"
+#   - "*.generated.*"
+#   - "vendor/**"
+#   - "dist/**"
+
+# Import shared skills from the runner's optional SHARED_REPO
+# Only listed skills are loaded — omit for none
+# shared_skills:
+#   - rust-pro
+#   - metal-standards
+
+# Allow REQUEST_CHANGES reviews (default: false, only posts COMMENT)
+# request_changes: false
+
+# Comment style: terse (default) | verbose
+# - terse:   one-line caveman-style inline comments + summary (uses caveman-review skill)
+# - verbose: full prose for both inline comments and the PR-level summary
+# style: terse
+
+# Severity floor: minor | important (default) | critical
+# - minor:     post all findings (Critical + Important + Minor)
+# - important: drop Minor / nits inline; summary mentions hidden count
+# - critical:  only Critical inline; summary mentions hidden Important + Minor counts
+# sensitivity: important
+
+# Cooldown between /wrily review re-requests on the same head SHA, in minutes.
+# 0 disables (default).
+# rerequest_cooldown_minutes: 0
+
+# Reply-as-feedback loop. When 'on' (default), Wrily reads prior PR review-thread
+# state on every run and may suppress / reply-in-thread to issues authors disputed.
+# Set 'off' to disable suppression logic.
+# reply_feedback: on

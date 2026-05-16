@@ -1,0 +1,58 @@
+name: Wrily Review (Reusable)
+
+# Reusable workflow consumer repos call from their own workflows to run a
+# Wrily review against a pull request. Callers must pass the Anthropic key
+# explicitly via the `secrets:` block below: for cross-repo reusable
+# workflows, `secrets.*` in the called workflow only sees secrets explicitly
+# passed by the caller or inherited via `secrets: inherit` — environment
+# secrets defined in this repo are not exposed to the caller's context.
+
+on:
+  workflow_call:
+    secrets:
+      anthropic_api_key:
+        required: true
+    inputs:
+      model:
+        type: string
+        default: "opus"
+      mode:
+        type: string
+        default: "auto"
+      max_budget:
+        type: string
+        default: ""
+      dry_run:
+        type: string
+        default: "false"
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      # packages: read is required for the runner's GITHUB_TOKEN to pull the
+      # wrily image from GHCR. Reusable-workflow permissions are intersected
+      # with the caller's, so callers must also grant packages: read — see
+      # docs/adoption.md.
+      packages: read
+    container:
+      # Internal release channel. This stays on the v1 major tag so consumer
+      # repos pick up Wrily patches without API-surface changes.
+      image: ghcr.io/barryroodt/wrily:1
+    steps:
+      - run: node /app/dist/main.js
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+          MODEL: ${{ inputs.model }}
+          MODE: ${{ inputs.mode }}
+          MAX_BUDGET: ${{ inputs.max_budget }}
+          DRY_RUN: ${{ inputs.dry_run }}

@@ -1,0 +1,25 @@
+{
+  // Wrily review dispatcher — receives Wrily GitHub App webhooks, mints
+  // installation tokens, fires repository_dispatch(review-pr) at the Wrily repo.
+  // See ./RUNBOOK.md for setup, secret bootstrap, and rotation.
+  "name": "wrily-review-dispatcher",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    // Non-secret: integer App ID. Visible on the Wrily App settings page.
+    // Override per-environment via `wrangler deploy --var WRILY_APP_ID:...`.
+    "WRILY_APP_ID": "REPLACE_WITH_APP_ID",
+    // Repo to receive repository_dispatch(review-pr). Hard-coded by design —
+    // the App only ever dispatches into Wrily's own actions runner.
+    "WRILY_REPO": "barryroodt/wrily",
+    // Optional shared skills repo. Leave blank to run without org-context skills.
+    "SHARED_REPO": "",
+  },
+  // Secrets — set via `wrangler secret put`, never committed:
+  //   WRILY_APP_PRIVATE_KEY  – PEM (PKCS#1 from GitHub App download, or PKCS#8)
+  //   WRILY_WEBHOOK_SECRET   – HMAC shared secret matching the App webhook config
+}

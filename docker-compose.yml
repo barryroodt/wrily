@@ -1,0 +1,15 @@
+services:
+  reviewer:
+    build: .
+    env_file: .env
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - DRY_RUN=${DRY_RUN:-true}
+      - MODE=${MODE:-single}
+      - MODEL=${MODEL:-opus}
+      - MAX_BUDGET=${MAX_BUDGET:-}
+      - CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+    volumes:
+      - ${REPO_PATH:-.}:/workspace
+    working_dir: /workspace

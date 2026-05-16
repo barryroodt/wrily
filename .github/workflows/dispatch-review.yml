@@ -1,0 +1,160 @@
+name: Wrily Review (dispatch)
+
+# Review workflow. Fires on `repository_dispatch(review-pr)` from the
+# webhook receiver in `integrations/` (Cloudflare Worker by default; n8n
+# documented as an alternative). The receiver is the only place the Wrily
+# GitHub App's private key lives — it mints both the dispatch token (to
+# trigger this workflow) and the consumer-scoped token (to post review
+# comments on the consumer PR). The consumer token is carried in the
+# dispatch payload and masked at job start.
+#
+# ANTHROPIC_API_KEY resolves from the `anthropic` environment secret in
+# this repo. Environment-scoped secrets resolve correctly for a normal
+# workflow in the defining repo — no cross-repo boundary involved here.
+#
+# See docs/design/webhook-architecture.md for the full flow and security model.
+
+on:
+  repository_dispatch:
+    types: [review-pr]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: anthropic
+    container:
+      # Internal release channel. See review.yml for why this remains the v1
+      # major tag until the Mastra image has been published and can be pinned
+      # deliberately in a follow-up release step.
+      image: ghcr.io/barryroodt/wrily:1
+    steps:
+      - name: Validate dispatch payload
+        shell: bash
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          for field in consumer_repo pr_number head_sha base_ref consumer_token; do
+            value=$(jq -r --arg f "$field" '.[$f] // ""' <<< "$PAYLOAD")
+            if [ -z "$value" ]; then
+              echo "::error::dispatch payload missing required field: $field"
+              exit 1
+            fi
+          done
+          echo "Payload validated for ${{ github.event.client_payload.consumer_repo }}#${{ github.event.client_payload.pr_number }}"
+
+      - name: Mask payload tokens
+        # GitHub auto-masks secrets at ::add-mask::. Both tokens arrive via
+        # client_payload (not `secrets.*`) so we mask explicitly — otherwise
+        # they could appear verbatim in downstream step logs. shared_token is
+        # optional (null when no shared skills repo is configured or the
+        # installation doesn't cover it); the
+        # masked-empty case is harmless.
+        shell: bash
+        env:
+          CONSUMER_TOKEN: ${{ github.event.client_payload.consumer_token }}
+          SHARED_TOKEN: ${{ github.event.client_payload.shared_token }}
+        run: |
+          [[ -n "${CONSUMER_TOKEN:-}" ]] && echo "::add-mask::${CONSUMER_TOKEN}"
+          [[ -n "${SHARED_TOKEN:-}" ]] && echo "::add-mask::${SHARED_TOKEN}"
+          true
+
+      - name: Create check run
+        # Surfaces a "Wrily / review" entry in the consumer PR's checks panel,
+        # CodeRabbit-style. Requires the App to grant `checks: write` on the
+        # consumer repo. Stays in_progress until the Update step below.
+        id: create_check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.event.client_payload.consumer_token }}
+          REPO: ${{ github.event.client_payload.consumer_repo }}
+          SHA: ${{ github.event.client_payload.head_sha }}
+          DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          check_id=$(gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/check-runs" \
+            -f name="Wrily / review" \
+            -f head_sha="$SHA" \
+            -f status="in_progress" \
+            -f details_url="$DETAILS_URL" \
+            -f "output[title]=Reviewing pull request" \
+            -f "output[summary]=Wrily is reviewing this PR. See details for the run log." \
+            --jq '.id')
+          echo "check_id=$check_id" >> "$GITHUB_OUTPUT"
+
+      - name: Run review
+        id: review
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ github.event.client_payload.consumer_token }}
+          # Optional shared-skills token/repo. Empty string when no shared
+          # skills repository is configured or the App installation doesn't
+          # cover it — cloneSharedStep skips the org-context clone in that case.
+          SHARED_TOKEN: ${{ github.event.client_payload.shared_token }}
+          SHARED_REPO: ${{ github.event.client_payload.shared_repo || '' }}
+          # CONSUMER_REPO carries the actual review target. Setting
+          # `GITHUB_REPOSITORY:` here is silently overridden by the runner's
+          # container-injected default (= this Wrily repo), so we export it
+          # explicitly inside the run body below.
+          CONSUMER_REPO: ${{ github.event.client_payload.consumer_repo }}
+          PR_NUMBER: ${{ github.event.client_payload.pr_number }}
+          COMMIT_SHA: ${{ github.event.client_payload.head_sha }}
+          BASE_BRANCH: ${{ github.event.client_payload.base_ref }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+          # Optional overrides — receivers can set any of these on the dispatch payload.
+          MODEL: ${{ github.event.client_payload.model || 'opus' }}
+          MODE: ${{ github.event.client_payload.mode || 'auto' }}
+          MAX_BUDGET: ${{ github.event.client_payload.max_budget || '' }}
+          DRY_RUN: ${{ github.event.client_payload.dry_run || 'false' }}
+          SCOPE_OVERRIDE: ${{ github.event.client_payload.scope_override || '' }}
+          WRILY_TRIGGER_SOURCE: ${{ github.event.client_payload.trigger_source || 'push' }}
+          GITHUB_ACTOR: ${{ github.event.client_payload.actor || '' }}
+          PR_AUTHOR_LOGIN: ${{ github.event.client_payload.pr_author_login || '' }}
+          # Bot login for prior-feedback thread filtering. Bare slug or [bot]-suffixed
+          # form both accepted (helper strips [bot] before comparing).
+          WRILY_BOT_LOGIN: ${{ vars.WRILY_BOT_LOGIN || 'wrily' }}
+        run: |
+          set -euo pipefail
+          export GITHUB_REPOSITORY="$CONSUMER_REPO"
+          node /app/dist/main.js
+
+      - name: Update check run
+        # Always runs so the check never gets stuck in_progress. Conclusion
+        # mirrors the review step's outcome — the job overall still fails if
+        # review failed (no continue-on-error).
+        if: always() && steps.create_check.outputs.check_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.event.client_payload.consumer_token }}
+          REPO: ${{ github.event.client_payload.consumer_repo }}
+          CHECK_ID: ${{ steps.create_check.outputs.check_id }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
+          DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$REVIEW_OUTCOME" in
+            success)   conclusion=success; title="Review completed";;
+            failure)   conclusion=failure; title="Review failed";;
+            cancelled) conclusion=cancelled; title="Review cancelled";;
+            *)         conclusion=neutral; title="Review skipped";;
+          esac
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/check-runs/$CHECK_ID" \
+            -f status="completed" \
+            -f conclusion="$conclusion" \
+            -f details_url="$DETAILS_URL" \
+            -f "output[title]=$title" \
+            -f "output[summary]=See run details for the full Wrily review log."

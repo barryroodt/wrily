@@ -1,0 +1,241 @@
+{
+  "name": "Wrily Review Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wrily-review",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-receive",
+      "name": "Receive GitHub webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "wrily-review-webhook"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const crypto = require('crypto');\n\n// Grab the raw webhook body and headers. With rawBody=true on the webhook\n// node, n8n gives us the raw bytes under $binary.body (base64-encoded). We\n// need the exact bytes GitHub sent for the HMAC to match — re-serializing\n// from $json can reorder keys and break verification.\nconst item = $input.first();\nconst headers = item.json.headers || {};\nlet rawBody;\nif (item.binary && item.binary.body && item.binary.body.data) {\n  rawBody = Buffer.from(item.binary.body.data, 'base64');\n} else {\n  // Fallback — works only if n8n preserved serialization.\n  rawBody = Buffer.from(JSON.stringify(item.json.body || item.json));\n}\n\nconst sigHeader = headers['x-hub-signature-256'] || headers['X-Hub-Signature-256'] || '';\nconst secret = $vars.WRILY_WEBHOOK_SECRET;\n\nlet signatureValid = false;\ntry {\n  const expected = 'sha256=' + crypto\n    .createHmac('sha256', secret)\n    .update(rawBody)\n    .digest('hex');\n  const a = Buffer.from(sigHeader);\n  const b = Buffer.from(expected);\n  signatureValid = a.length === b.length && crypto.timingSafeEqual(a, b);\n} catch (e) {\n  signatureValid = false;\n}\n\n// Extract fields we'll need downstream. Parsed body is under $json.body.\nconst body = item.json.body || item.json;\nconst pr = body.pull_request || {};\nconst head = pr.head || {};\nconst base = pr.base || {};\n\nreturn [{\n  json: {\n    signature_valid: signatureValid,\n    github_event: headers['x-github-event'] || headers['X-GitHub-Event'] || '',\n    action: body.action || '',\n    installation_id: body.installation ? body.installation.id : null,\n    repository_full_name: body.repository ? body.repository.full_name : '',\n    pr_number: pr.number || null,\n    head_sha: head.sha || '',\n    base_ref: base.ref || '',\n  },\n}];\n"
+      },
+      "id": "code-verify-signature",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.signature_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-signature-valid",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Unauthorized: webhook signature mismatch",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "respond-401",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 240]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.github_event === 'pull_request' && ['opened','synchronize','reopened'].includes($json.action) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-event-of-interest",
+      "name": "Event of interest?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 560]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Accepted (event not dispatched)",
+        "options": {
+          "responseCode": 204
+        }
+      },
+      "id": "respond-204",
+      "name": "Respond 204",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 440]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const crypto = require('crypto');\nconst https = require('https');\n\nconst item = $input.first().json;\nconst appId = $vars.WRILY_APP_ID;\nconst privateKey = $vars.WRILY_APP_PRIVATE_KEY;\nconst installationId = item.installation_id;\nconst consumerRepo = item.repository_full_name;\n\nif (!appId || !privateKey) {\n  throw new Error('WRILY_APP_ID or WRILY_APP_PRIVATE_KEY not set in n8n Variables');\n}\nif (!installationId) {\n  throw new Error('webhook payload missing installation.id');\n}\nif (!consumerRepo || !consumerRepo.includes('/')) {\n  throw new Error('webhook payload missing repository.full_name');\n}\n\nfunction b64url(input) {\n  return Buffer.from(input).toString('base64')\n    .replace(/=/g, '').replace(/\\+/g, '-').replace(/\\//g, '_');\n}\n\nfunction createAppJwt() {\n  const now = Math.floor(Date.now() / 1000);\n  const header = { alg: 'RS256', typ: 'JWT' };\n  const payload = { iat: now - 30, exp: now + 540, iss: Number(appId) };\n  const data = b64url(JSON.stringify(header)) + '.' + b64url(JSON.stringify(payload));\n  const signer = crypto.createSign('RSA-SHA256');\n  signer.update(data);\n  const signature = signer.sign(privateKey, 'base64')\n    .replace(/=/g, '').replace(/\\+/g, '-').replace(/\\//g, '_');\n  return data + '.' + signature;\n}\n\nfunction mintToken(appJwt, repositories) {\n  return new Promise((resolve, reject) => {\n    const body = JSON.stringify({ repositories });\n    const req = https.request({\n      hostname: 'api.github.com',\n      path: '/app/installations/' + installationId + '/access_tokens',\n      method: 'POST',\n      headers: {\n        'Authorization': 'Bearer ' + appJwt,\n        'Accept': 'application/vnd.github+json',\n        'User-Agent': 'wrily-review-dispatcher',\n        'Content-Type': 'application/json',\n        'Content-Length': Buffer.byteLength(body),\n      },\n    }, (res) => {\n      let chunks = '';\n      res.on('data', c => chunks += c);\n      res.on('end', () => {\n        if (res.statusCode !== 201) {\n          return reject(new Error('mint token failed (' + res.statusCode + '): ' + chunks));\n        }\n        try {\n          resolve(JSON.parse(chunks).token);\n        } catch (e) {\n          reject(e);\n        }\n      });\n    });\n    req.on('error', reject);\n    req.write(body);\n    req.end();\n  });\n}\n\nconst appJwt = createAppJwt();\nconst consumerRepoName = consumerRepo.split('/')[1];\n\n// Mint in parallel. If the installation covers both wrily and the consumer,\n// these are two independent narrow-scope tokens from the same installation.\nconst [wrilyToken, consumerToken] = await Promise.all([\n  mintToken(appJwt, ['wrily']),\n  mintToken(appJwt, [consumerRepoName]),\n]);\n\nreturn [{\n  json: {\n    wrily_token: wrilyToken,\n    consumer_token: consumerToken,\n    consumer_repo: consumerRepo,\n    pr_number: item.pr_number,\n    head_sha: item.head_sha,\n    base_ref: item.base_ref,\n  },\n}];\n"
+      },
+      "id": "code-mint-tokens",
+      "name": "Mint installation tokens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 680]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/barryroodt/wrily/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.wrily_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "wrily-review-dispatcher"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({event_type: 'review-pr', client_payload: {consumer_repo: $json.consumer_repo, pr_number: $json.pr_number, head_sha: $json.head_sha, base_ref: $json.base_ref, consumer_token: $json.consumer_token}}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "http-dispatch",
+      "name": "Dispatch to wrily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 680]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'dispatched', consumer_repo: $('Mint installation tokens').item.json.consumer_repo, pr_number: $('Mint installation tokens').item.json.pr_number } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-200",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 680]
+    }
+  ],
+  "connections": {
+    "Receive GitHub webhook": {
+      "main": [
+        [
+          { "node": "Verify signature", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          { "node": "Signature valid?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          { "node": "Event of interest?", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Respond 401", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Event of interest?": {
+      "main": [
+        [
+          { "node": "Mint installation tokens", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Respond 204", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Mint installation tokens": {
+      "main": [
+        [
+          { "node": "Dispatch to wrily", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Dispatch to wrily": {
+      "main": [
+        [
+          { "node": "Respond 200", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    { "name": "wrily" }
+  ]
+}

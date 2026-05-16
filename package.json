@@ -1,0 +1,31 @@
+{
+  "name": "wrily",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@mastra/core": "0.10.0",
+    "@octokit/graphql": "8.1.1",
+    "@octokit/rest": "21.0.2",
+    "yaml": "2.5.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.4",
+    "@vitest/coverage-v8": "2.1.2",
+    "typescript": "5.6.2",
+    "vitest": "2.1.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

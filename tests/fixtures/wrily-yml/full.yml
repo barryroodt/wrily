@@ -1,0 +1,14 @@
+model: opus
+mode: team
+team_threshold: 3
+team_threshold_unit: folders
+max_budget_usd: 15
+ignore:
+  - "*.lock"
+  - "vendor/**"
+shared_skills:
+  - rust-pro
+request_changes: false
+style: verbose
+sensitivity: critical
+reply_feedback: on

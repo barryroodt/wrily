@@ -1,0 +1,56 @@
+name: "Auto Reviewer"
+description: "AI-powered code review using Claude Code"
+inputs:
+  anthropic_api_key:
+    description: "Anthropic API key"
+    required: true
+  github_token:
+    description: "GitHub token with PR write permissions"
+    required: true
+  model:
+    description: "Claude model to use"
+    default: "opus"
+  mode:
+    description: "Review mode: auto, single, or team"
+    default: "auto"
+  max_budget:
+    description: "Maximum USD budget per review (default: $5 single, $15 team)"
+    default: ""
+  dry_run:
+    description: "Output review to logs instead of posting"
+    default: "false"
+  pr_author_login:
+    description: "GitHub login of the PR author (used by digest is_authorized)"
+    default: ""
+  shared_token:
+    description: "Token for cloning an optional shared skills repository"
+    default: ""
+  shared_repo:
+    description: "Optional shared skills repository in owner/repo form"
+    default: ""
+  scope_override:
+    description: "Override review scope: full or delta"
+    default: ""
+  wrily_bot_login:
+    description: "Bot login used for prior-feedback thread filtering"
+    default: "wrily"
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  env:
+    ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+    GITHUB_TOKEN: ${{ inputs.github_token }}
+    MODEL: ${{ inputs.model }}
+    MODE: ${{ inputs.mode }}
+    MAX_BUDGET: ${{ inputs.max_budget }}
+    DRY_RUN: ${{ inputs.dry_run }}
+    PR_NUMBER: ${{ github.event.pull_request.number }}
+    GITHUB_REPOSITORY: ${{ github.repository }}
+    BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+    COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+    PR_AUTHOR_LOGIN: ${{ inputs.pr_author_login }}
+    SHARED_TOKEN: ${{ inputs.shared_token }}
+    SHARED_REPO: ${{ inputs.shared_repo }}
+    SCOPE_OVERRIDE: ${{ inputs.scope_override }}
+    WRILY_BOT_LOGIN: ${{ inputs.wrily_bot_login }}
