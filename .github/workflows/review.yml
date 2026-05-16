@@ -26,6 +26,8 @@ on:
         type: string
         default: "false"
 
+permissions: {}
+
 jobs:
   review:
     runs-on: ubuntu-24.04

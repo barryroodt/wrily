@@ -1,0 +1,17 @@
+# Allowlisted gitleaks findings.
+#
+# Each line is a `<commit>:<path>:<rule>:<line>` fingerprint emitted by
+# `gitleaks detect --report-format json`. Add a comment above the entry
+# explaining WHY it is safe.
+
+# Documentation snippets referencing the literal PEM marker string in
+# setup instructions. No key material present.
+1c25042bfe929a37552a4af9097eb03128321f7f:integrations/cloudflare-worker/RUNBOOK.md:private-key:15
+1c25042bfe929a37552a4af9097eb03128321f7f:integrations/n8n/RUNBOOK.md:private-key:15
+
+# Throwaway RSA-2048 test key pair used solely by JWT-signing unit tests.
+# Generated once at fixture-creation time, never deployed, never used to
+# sign anything outside the test process. See fixtures.ts:1-6 for the
+# generation commands and a do-not-reuse note.
+1c25042bfe929a37552a4af9097eb03128321f7f:integrations/cloudflare-worker/test/fixtures.ts:private-key:8
+1c25042bfe929a37552a4af9097eb03128321f7f:integrations/cloudflare-worker/test/fixtures.ts:private-key:37

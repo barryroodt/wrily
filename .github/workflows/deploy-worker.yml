@@ -16,6 +16,9 @@ on:
   #     - "integrations/cloudflare-worker/**"
   #     - ".github/workflows/deploy-worker.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: wrangler deploy
