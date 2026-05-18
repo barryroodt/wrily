@@ -128,11 +128,26 @@ echo "Base:      ${BASE_BRANCH}"
 echo "Commit:    ${COMMIT_SHA:0:8}"
 
 # ---------------------------------------------------------------------------
-# Authenticate
+# Source .env
 # ---------------------------------------------------------------------------
-if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-  if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+# Always source .env when present, before any var-presence checks below.
+# Previously this was gated on auth being unset, which meant users with
+# ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN in their shell would silently
+# drop SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY from the .env file. Shell
+# env still wins because `source` doesn't overwrite already-set vars unless
+# the .env line is unconditional (KEY=val). We honor that by only loading
+# the file when at least one expected key is missing — keeps existing
+# shell-exported auth in charge while filling in Supabase blanks.
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+  if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+     || [[ -z "${SUPABASE_URL:-}" ]] \
+     || [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+    # Set -a temporarily so KEY=val lines export into the env we pass on
+    # to docker; unset it immediately after to avoid leaking.
+    set -a
+    # shellcheck source=/dev/null
     source "${SCRIPT_DIR}/.env"
+    set +a
   fi
 fi
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readDotEnv, appendDotEnv, hasKey } from '../../../src/cli/persistence/dotenv.js';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -45,4 +45,24 @@ describe('dotenv helpers', () => {
     appendDotEnv(file, { FIRST: '1' });
     expect(readFileSync(file, 'utf8')).toBe('FIRST=1\n');
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'appendDotEnv creates the file with 0600 perms',
+    () => {
+      appendDotEnv(file, { SECRET: 'eyJ.key' });
+      const mode = statSync(file).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'appendDotEnv tightens perms on an existing 0644 file',
+    () => {
+      writeFileSync(file, 'EXISTING=1\n');
+      chmodSync(file, 0o644);
+      appendDotEnv(file, { NEW: 'val' });
+      const mode = statSync(file).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
 });
