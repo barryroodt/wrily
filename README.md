@@ -32,6 +32,8 @@ Step-by-step walkthrough with every command, screenshot-worthy field, and verifi
 
 Operational details (rotation, observability, failure modes) live in the [Worker runbook](integrations/cloudflare-worker/RUNBOOK.md).
 
+- *(Optional)* Persist per-review cost to a self-hosted Supabase project — see [Optional: cost tracking](docs/self-hosting.md#optional-cost-tracking).
+
 ---
 
 ## Using Wrily on a repo (consumers)

@@ -20,6 +20,9 @@ export function buildReviewWorkflow(deps: WorkflowDeps) {
     .then(steps.agentCallStep)
     .then(steps.extractFindingsStep)
     .then(steps.routeFindingsStep)
+    // Persist cost BEFORE the external post call so we keep the cost row
+    // even when the post step fails (stale commit SHA, GitHub 422, etc.).
+    .then(steps.persistUsageStep)
     .then(steps.postToGitHubStep)
     .then(steps.resolveAddressedThreadsStep)
     .commit();

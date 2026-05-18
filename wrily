@@ -19,6 +19,35 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ---------------------------------------------------------------------------
+# Subcommand dispatch: `wrily costs ...` and `wrily persistence <sub> ...`
+# ---------------------------------------------------------------------------
+case "${1:-}" in
+  costs)
+    shift
+    cd "${SCRIPT_DIR}"
+    if [[ ! -d node_modules ]]; then pnpm install --frozen-lockfile; fi
+    if [[ ! -f dist/cli/costs.js ]]; then pnpm build; fi
+    exec node dist/cli/costs.js "$@"
+    ;;
+  persistence)
+    shift
+    SUB="${1:-}"; shift || true
+    cd "${SCRIPT_DIR}"
+    if [[ ! -d node_modules ]]; then pnpm install --frozen-lockfile; fi
+    if [[ ! -f "dist/cli/persistence/${SUB}.js" ]]; then pnpm build; fi
+    case "${SUB}" in
+      init|migrate|status)
+        exec node "dist/cli/persistence/${SUB}.js" "$@"
+        ;;
+      *)
+        echo "Usage: ./wrily persistence {init|migrate|status}"
+        exit 1
+        ;;
+    esac
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
 DRY_RUN="${DRY_RUN:-true}"
@@ -50,6 +79,12 @@ for arg in "$@"; do
       echo "Authentication (set one, or add to .env):"
       echo "  ANTHROPIC_API_KEY          API key from console.anthropic.com"
       echo "  CLAUDE_CODE_OAUTH_TOKEN    OAuth token (run: claude setup-token)"
+      echo ""
+      echo "Subcommands:"
+      echo "  ./wrily costs [--since 30d] [--by repo|model|day]   Show spend rollups"
+      echo "  ./wrily persistence init                            Create Supabase project + migrate"
+      echo "  ./wrily persistence migrate                         Apply pending migrations"
+      echo "  ./wrily persistence status                          Show persistence health"
       exit 0
       ;;
     *)
@@ -93,11 +128,26 @@ echo "Base:      ${BASE_BRANCH}"
 echo "Commit:    ${COMMIT_SHA:0:8}"
 
 # ---------------------------------------------------------------------------
-# Authenticate
+# Source .env
 # ---------------------------------------------------------------------------
-if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-  if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+# Always source .env when present, before any var-presence checks below.
+# Previously this was gated on auth being unset, which meant users with
+# ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN in their shell would silently
+# drop SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY from the .env file. Shell
+# env still wins because `source` doesn't overwrite already-set vars unless
+# the .env line is unconditional (KEY=val). We honor that by only loading
+# the file when at least one expected key is missing — keeps existing
+# shell-exported auth in charge while filling in Supabase blanks.
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+  if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+     || [[ -z "${SUPABASE_URL:-}" ]] \
+     || [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+    # Set -a temporarily so KEY=val lines export into the env we pass on
+    # to docker; unset it immediately after to avoid leaking.
+    set -a
+    # shellcheck source=/dev/null
     source "${SCRIPT_DIR}/.env"
+    set +a
   fi
 fi
 
@@ -185,5 +235,8 @@ docker run --rm \
   -e SCOPE_OVERRIDE="${SCOPE_OVERRIDE:-}" \
   -e REPLY_FEEDBACK="${REPLY_FEEDBACK:-}" \
   -e PR_AUTHOR_LOGIN="$PR_AUTHOR_LOGIN" \
+  -e WRILY_TRIGGER_SOURCE=local_cli \
+  -e SUPABASE_URL="${SUPABASE_URL:-}" \
+  -e SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}" \
   -e CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
   wrily

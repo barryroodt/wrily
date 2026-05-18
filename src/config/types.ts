@@ -42,4 +42,5 @@ export type RuntimeEnv = {
   triggerSource: string;
   actor: string;
   replyFeedbackOverride: '' | 'on' | 'off';
+  supabase?: { url: string; serviceRoleKey: string } | null;
 };

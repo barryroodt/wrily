@@ -1,5 +1,91 @@
 import { spawn } from 'node:child_process';
-import type { AgentRunOptions, AgentResult, AgentRunner } from './runner.js';
+import type { AgentRunOptions, AgentResult, AgentRunner, AgentTokenUsage } from './runner.js';
+
+type ResultEvent = {
+  type: 'result';
+  total_cost_usd?: number;
+  usage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+};
+
+function isResultEvent(o: unknown): o is ResultEvent {
+  if (typeof o !== 'object' || o === null) return false;
+  const obj = o as Record<string, unknown>;
+  if (obj.type !== 'result') return false;
+  return typeof obj.usage === 'object' && obj.usage !== null;
+}
+
+export function parseStreamJsonUsage(stdout: string): AgentTokenUsage | null {
+  const lines = stdout.split(/\r?\n/);
+  let last: AgentTokenUsage | null = null;
+  for (const line of lines) {
+    if (!line.startsWith('{')) continue;
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isResultEvent(obj)) continue;
+    last = {
+      inputTokens: obj.usage.input_tokens ?? 0,
+      outputTokens: obj.usage.output_tokens ?? 0,
+      cacheReadTokens: obj.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: obj.usage.cache_creation_input_tokens ?? 0,
+      costUsd: typeof obj.total_cost_usd === 'number' ? obj.total_cost_usd : 0,
+    };
+  }
+  return last;
+}
+
+type AssistantEvent = {
+  type: 'assistant';
+  message?: {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+};
+
+function isAssistantEvent(o: unknown): o is AssistantEvent {
+  if (typeof o !== 'object' || o === null) return false;
+  return (o as Record<string, unknown>).type === 'assistant';
+}
+
+/**
+ * Reassemble the human-readable assistant reply from a stream-json
+ * transcript. `--output-format=stream-json` emits one NDJSON event per
+ * line; the model's textual output is split across one or more `assistant`
+ * events, each carrying a `message.content[]` array with `text` blocks.
+ * Downstream parsers (e.g. `extractFindings`) want that concatenated text,
+ * not the raw event stream.
+ *
+ * If no assistant events are present (process crashed before producing
+ * output), returns the empty string so callers fall through to whatever
+ * failure handling they already have.
+ */
+export function reassembleAssistantText(stdout: string): string {
+  const parts: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.startsWith('{')) continue;
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isAssistantEvent(obj)) continue;
+    const blocks = obj.message?.content ?? [];
+    for (const b of blocks) {
+      if (b && b.type === 'text' && typeof b.text === 'string') {
+        parts.push(b.text);
+      }
+    }
+  }
+  return parts.join('');
+}
 
 // Team-mode opus on substantial PRs runs ~10-20 min: 4-5 subagent claude calls
 // in sequence + unification. Single-mode is typically <5 min. Override via
@@ -54,6 +140,8 @@ export class ClaudeCodeRunner implements AgentRunner {
       '--model', opts.model,
       '--dangerously-skip-permissions',
       '--no-session-persistence',
+      '--output-format', 'stream-json',
+      '--verbose',
     ];
     if (opts.maxBudgetUsd != null) {
       args.push('--max-budget-usd', String(opts.maxBudgetUsd));
@@ -109,9 +197,16 @@ export class ClaudeCodeRunner implements AgentRunner {
           return;
         }
 
+        // stream-json emits NDJSON events on stdout; downstream consumers
+        // (extractFindings, debug dumpers) expect the model's textual reply.
+        // Reassemble it from the `assistant` events. If reassembly produces
+        // nothing (e.g. process died early), fall back to the raw stdout so
+        // failure modes still have something to look at.
+        const assistantText = reassembleAssistantText(stdout);
+        const effectiveStdout = assistantText.length > 0 ? assistantText : stdout;
         resolve({
-          stdout, stderr, exitCode: code ?? -1, durationMs,
-          tokenUsage: null,
+          stdout: effectiveStdout, stderr, exitCode: code ?? -1, durationMs,
+          tokenUsage: parseStreamJsonUsage(stdout),
         });
       });
     });

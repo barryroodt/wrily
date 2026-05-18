@@ -93,7 +93,23 @@ export async function postReview(client: Client, input: CreateReviewInput): Prom
     if (err?.status !== 422) throw err;
 
     console.warn('[postReview] 422 with comments — stripping comments, retrying body-only');
-    const bodyOnly = await withRetries(() => callBulk([]));
+    let bodyOnly: Awaited<ReturnType<typeof callBulk>>;
+    try {
+      bodyOnly = await withRetries(() => callBulk([]));
+    } catch (bodyErr: any) {
+      if (bodyErr?.status !== 422) throw bodyErr;
+      console.warn('[postReview] body-only 422 — retrying without commit_id');
+      bodyOnly = await withRetries(() =>
+        client.rest.pulls.createReview({
+          owner: input.owner,
+          repo: input.repo,
+          pull_number: input.prNumber,
+          event: input.event,
+          body: input.body,
+          comments: [],
+        }),
+      );
+    }
 
     const failed: ReviewResult['failedComments'] = [];
     for (const c of input.comments) {
