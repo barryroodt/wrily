@@ -1,5 +1,46 @@
 import { spawn } from 'node:child_process';
-import type { AgentRunOptions, AgentResult, AgentRunner } from './runner.js';
+import type { AgentRunOptions, AgentResult, AgentRunner, AgentTokenUsage } from './runner.js';
+
+type ResultEvent = {
+  type: 'result';
+  total_cost_usd?: number;
+  usage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+};
+
+function isResultEvent(o: unknown): o is ResultEvent {
+  if (typeof o !== 'object' || o === null) return false;
+  const obj = o as Record<string, unknown>;
+  if (obj.type !== 'result') return false;
+  return typeof obj.usage === 'object' && obj.usage !== null;
+}
+
+export function parseStreamJsonUsage(stdout: string): AgentTokenUsage | null {
+  const lines = stdout.split(/\r?\n/);
+  let last: AgentTokenUsage | null = null;
+  for (const line of lines) {
+    if (!line.startsWith('{')) continue;
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isResultEvent(obj)) continue;
+    last = {
+      inputTokens: obj.usage.input_tokens ?? 0,
+      outputTokens: obj.usage.output_tokens ?? 0,
+      cacheReadTokens: obj.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: obj.usage.cache_creation_input_tokens ?? 0,
+      costUsd: typeof obj.total_cost_usd === 'number' ? obj.total_cost_usd : 0,
+    };
+  }
+  return last;
+}
 
 // Team-mode opus on substantial PRs runs ~10-20 min: 4-5 subagent claude calls
 // in sequence + unification. Single-mode is typically <5 min. Override via
@@ -54,6 +95,8 @@ export class ClaudeCodeRunner implements AgentRunner {
       '--model', opts.model,
       '--dangerously-skip-permissions',
       '--no-session-persistence',
+      '--output-format', 'stream-json',
+      '--verbose',
     ];
     if (opts.maxBudgetUsd != null) {
       args.push('--max-budget-usd', String(opts.maxBudgetUsd));
@@ -111,7 +154,7 @@ export class ClaudeCodeRunner implements AgentRunner {
 
         resolve({
           stdout, stderr, exitCode: code ?? -1, durationMs,
-          tokenUsage: null,
+          tokenUsage: parseStreamJsonUsage(stdout),
         });
       });
     });
