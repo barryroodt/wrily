@@ -37,4 +37,30 @@ describe('supabaseCli', () => {
     process.env.STUB_SUPABASE_STDERR = 'auth required';
     await expect(runSupabase(['projects', 'list'])).rejects.toThrow(/auth required/);
   });
+
+  it('runSupabase propagates env overrides to the child process', async () => {
+    // The stub echoes whatever STUB_SUPABASE_STDOUT is set to. Our env
+    // override should win over any value inherited from process.env.
+    process.env.STUB_SUPABASE_STDOUT = 'parent';
+    const out = await runSupabase(['projects', 'list'], {
+      env: { STUB_SUPABASE_STDOUT: 'overridden' },
+    });
+    expect(out.stdout.trim()).toBe('overridden');
+  });
+
+  it('runSupabase does not leak secret values into thrown error messages when passed via env', async () => {
+    process.env.STUB_SUPABASE_EXIT = '1';
+    process.env.STUB_SUPABASE_STDERR = 'something failed';
+    await expect(
+      runSupabase(['link', '--project-ref', 'abc'], {
+        env: { SUPABASE_DB_PASSWORD: 'super-secret-password' },
+      }),
+    ).rejects.toThrow(
+      // The thrown error is built from args.join(' ') + stderr — neither
+      // should ever contain the password since we passed it via env.
+      expect.objectContaining({
+        message: expect.not.stringContaining('super-secret-password'),
+      }),
+    );
+  });
 });

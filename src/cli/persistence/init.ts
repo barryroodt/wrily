@@ -100,18 +100,25 @@ export async function initCommand(): Promise<number> {
 
   const name = await prompt('Project name', defaultProjectName());
   const region = await prompt('Region', 'us-east-1');
+  // The DB password is needed by `supabase projects create` / `link` but is
+  // never used by Wrily at runtime (writes go through the service-role key).
+  // We pass it via SUPABASE_DB_PASSWORD env to keep it off argv (visible via
+  // `ps`) and out of stdout / error messages. If the operator later needs
+  // SQL-editor access to the project, they can reset the password from the
+  // Supabase dashboard.
   const password = generatePassword();
-  console.log(`Generated DB password: ${password}`);
-  console.log('Save this somewhere safe — it is only needed for dashboard SQL access, not for Wrily writes.');
+  const supabaseEnv = { SUPABASE_DB_PASSWORD: password };
 
   console.log(`Creating project ${name} in ${region}...`);
-  const created = await runSupabase([
-    'projects', 'create', name,
-    '--org-id', org.id,
-    '--region', region,
-    '--db-password', password,
-    '--output', 'json',
-  ]);
+  const created = await runSupabase(
+    [
+      'projects', 'create', name,
+      '--org-id', org.id,
+      '--region', region,
+      '--output', 'json',
+    ],
+    { env: supabaseEnv },
+  );
   const parsed = JSON.parse(created.stdout) as { id?: string; ref?: string };
   const ref = parsed.ref ?? parsed.id;
   if (!ref) throw new Error(`Could not parse project ref from supabase output: ${created.stdout}`);
@@ -128,13 +135,15 @@ export async function initCommand(): Promise<number> {
   console.log(`✓ Credentials written to ${ENV_PATH}`);
 
   console.log('Linking + applying migrations...');
-  await runSupabase(['link', '--project-ref', ref, '--password', password]);
-  const push = await runSupabase(['db', 'push', '--include-all']);
+  await runSupabase(['link', '--project-ref', ref], { env: supabaseEnv });
+  const push = await runSupabase(['db', 'push', '--include-all'], { env: supabaseEnv });
   process.stdout.write(push.stdout);
 
   console.log('');
   console.log(`✓ Project ready: ${name} (${region})`);
   console.log('✓ Migrations applied: 0001_review_runs.sql, 0002_views.sql');
+  console.log('Note: DB password was generated and used for setup only; not persisted.');
+  console.log('      Reset from the Supabase dashboard if you need SQL-editor access.');
   console.log('Next: open a PR; rows will land here. Query with `./wrily costs`.');
   return 0;
 }

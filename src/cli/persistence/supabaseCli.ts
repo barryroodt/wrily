@@ -17,11 +17,23 @@ export function requireSupabaseBinary(): void {
 
 export type SupabaseRunResult = { stdout: string; stderr: string; exitCode: number };
 
-export function runSupabase(args: string[], opts: { cwd?: string; input?: string } = {}): Promise<SupabaseRunResult> {
+export type SupabaseRunOptions = {
+  cwd?: string;
+  input?: string;
+  /**
+   * Extra env vars merged into the child process. Use this to pass secrets
+   * (e.g. SUPABASE_DB_PASSWORD) without exposing them on the argv, which is
+   * visible to other users via `ps` and would otherwise leak into error
+   * messages built from `args.join(' ')`.
+   */
+  env?: Record<string, string>;
+};
+
+export function runSupabase(args: string[], opts: SupabaseRunOptions = {}): Promise<SupabaseRunResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn('supabase', args, {
       cwd: opts.cwd,
-      env: process.env,
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const outChunks: Buffer[] = [];
