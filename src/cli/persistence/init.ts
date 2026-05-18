@@ -114,14 +114,16 @@ export async function initCommand(): Promise<number> {
 
   const name = await prompt('Project name', defaultProjectName());
   const region = await prompt('Region', 'us-east-1');
-  // The DB password is needed by `supabase projects create` / `link` but is
-  // never used by Wrily at runtime (writes go through the service-role key).
-  // We pass it via SUPABASE_DB_PASSWORD env to keep it off argv (visible via
-  // `ps`) and out of stdout / error messages. If the operator later needs
-  // SQL-editor access to the project, they can reset the password from the
-  // Supabase dashboard.
+  // The DB password is required by `supabase projects create` as a CLI flag
+  // (the binary's MarkFlagRequired enforcement; env-var fallback is not
+  // honored for this subcommand). It is never used by Wrily at runtime —
+  // writes go through the service-role key — so we generate a random one,
+  // pass it via argv only as long as the child process needs it, and never
+  // log or persist it. The runSupabase `redactFlags` option keeps the value
+  // out of any error message built from the args. Operators who later need
+  // SQL-editor access can reset the password from the Supabase dashboard.
   const password = generatePassword();
-  const supabaseEnv = { SUPABASE_DB_PASSWORD: password };
+  const REDACT = ['--db-password', '--password'];
 
   console.log(`Creating project ${name} in ${region}...`);
   const created = await runSupabase(
@@ -129,9 +131,10 @@ export async function initCommand(): Promise<number> {
       'projects', 'create', name,
       '--org-id', org.id,
       '--region', region,
+      '--db-password', password,
       '--output', 'json',
     ],
-    { env: supabaseEnv },
+    { redactFlags: REDACT },
   );
   const parsed = JSON.parse(created.stdout) as { id?: string; ref?: string };
   const ref = parsed.ref ?? parsed.id;
@@ -149,8 +152,14 @@ export async function initCommand(): Promise<number> {
   console.log(`✓ Credentials written to ${ENV_PATH}`);
 
   console.log('Linking + applying migrations...');
-  await runSupabase(['link', '--project-ref', ref], { env: supabaseEnv });
-  const push = await runSupabase(['db', 'push', '--include-all'], { env: supabaseEnv });
+  // `supabase link` accepts the password via SUPABASE_DB_PASSWORD env var,
+  // so we use that path here to keep at least one call argv-clean.
+  await runSupabase(['link', '--project-ref', ref], {
+    env: { SUPABASE_DB_PASSWORD: password },
+  });
+  const push = await runSupabase(['db', 'push', '--include-all'], {
+    env: { SUPABASE_DB_PASSWORD: password },
+  });
   process.stdout.write(push.stdout);
 
   console.log('');

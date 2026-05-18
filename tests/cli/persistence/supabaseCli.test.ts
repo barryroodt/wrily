@@ -56,10 +56,31 @@ describe('supabaseCli', () => {
         env: { SUPABASE_DB_PASSWORD: 'super-secret-password' },
       }),
     ).rejects.toThrow(
-      // The thrown error is built from args.join(' ') + stderr — neither
-      // should ever contain the password since we passed it via env.
       expect.objectContaining({
         message: expect.not.stringContaining('super-secret-password'),
+      }),
+    );
+  });
+
+  it('runSupabase redacts values of flags listed in redactFlags from error messages', async () => {
+    process.env.STUB_SUPABASE_EXIT = '1';
+    process.env.STUB_SUPABASE_STDERR = 'bad';
+    await expect(
+      runSupabase(['projects', 'create', 'foo', '--db-password', 'sekret-pw-123', '--region', 'us-east-1'], {
+        redactFlags: ['--db-password'],
+      }),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        message: expect.stringContaining('--db-password <redacted>'),
+      }),
+    );
+    await expect(
+      runSupabase(['projects', 'create', 'foo', '--db-password', 'sekret-pw-123'], {
+        redactFlags: ['--db-password'],
+      }),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        message: expect.not.stringContaining('sekret-pw-123'),
       }),
     );
   });

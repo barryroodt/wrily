@@ -35,7 +35,24 @@ export type SupabaseRunOptions = {
    * `--output json` payloads.
    */
   interactive?: boolean;
+  /**
+   * Flag names whose immediately-following value should be replaced with
+   * `<redacted>` before the args are interpolated into an error message.
+   * Use for sensitive flags like `--db-password` that the supabase CLI
+   * insists on receiving via argv. The value is still passed to the child
+   * process unchanged — only error-message exposure is suppressed.
+   */
+  redactFlags?: string[];
 };
+
+function redactArgsForError(args: string[], redactFlags: string[]): string {
+  if (redactFlags.length === 0) return args.join(' ');
+  const out = [...args];
+  for (let i = 0; i < out.length - 1; i++) {
+    if (redactFlags.includes(out[i]!)) out[i + 1] = '<redacted>';
+  }
+  return out.join(' ');
+}
 
 export function runSupabase(args: string[], opts: SupabaseRunOptions = {}): Promise<SupabaseRunResult> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -56,7 +73,8 @@ export function runSupabase(args: string[], opts: SupabaseRunOptions = {}): Prom
       const stdout = interactive ? '' : Buffer.concat(outChunks).toString('utf8');
       const stderr = interactive ? '' : Buffer.concat(errChunks).toString('utf8');
       if (code !== 0) {
-        rejectPromise(new Error(`supabase ${args.join(' ')} exited ${code}: ${stderr.trim() || stdout.trim()}`));
+        const safeArgs = redactArgsForError(args, opts.redactFlags ?? []);
+        rejectPromise(new Error(`supabase ${safeArgs} exited ${code}: ${stderr.trim() || stdout.trim()}`));
         return;
       }
       resolvePromise({ stdout, stderr, exitCode: code });
