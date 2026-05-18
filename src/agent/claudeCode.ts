@@ -42,6 +42,51 @@ export function parseStreamJsonUsage(stdout: string): AgentTokenUsage | null {
   return last;
 }
 
+type AssistantEvent = {
+  type: 'assistant';
+  message?: {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+};
+
+function isAssistantEvent(o: unknown): o is AssistantEvent {
+  if (typeof o !== 'object' || o === null) return false;
+  return (o as Record<string, unknown>).type === 'assistant';
+}
+
+/**
+ * Reassemble the human-readable assistant reply from a stream-json
+ * transcript. `--output-format=stream-json` emits one NDJSON event per
+ * line; the model's textual output is split across one or more `assistant`
+ * events, each carrying a `message.content[]` array with `text` blocks.
+ * Downstream parsers (e.g. `extractFindings`) want that concatenated text,
+ * not the raw event stream.
+ *
+ * If no assistant events are present (process crashed before producing
+ * output), returns the empty string so callers fall through to whatever
+ * failure handling they already have.
+ */
+export function reassembleAssistantText(stdout: string): string {
+  const parts: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.startsWith('{')) continue;
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isAssistantEvent(obj)) continue;
+    const blocks = obj.message?.content ?? [];
+    for (const b of blocks) {
+      if (b && b.type === 'text' && typeof b.text === 'string') {
+        parts.push(b.text);
+      }
+    }
+  }
+  return parts.join('');
+}
+
 // Team-mode opus on substantial PRs runs ~10-20 min: 4-5 subagent claude calls
 // in sequence + unification. Single-mode is typically <5 min. Override via
 // WRILY_AGENT_TIMEOUT_MS env var when a specific run needs more headroom.
@@ -152,8 +197,15 @@ export class ClaudeCodeRunner implements AgentRunner {
           return;
         }
 
+        // stream-json emits NDJSON events on stdout; downstream consumers
+        // (extractFindings, debug dumpers) expect the model's textual reply.
+        // Reassemble it from the `assistant` events. If reassembly produces
+        // nothing (e.g. process died early), fall back to the raw stdout so
+        // failure modes still have something to look at.
+        const assistantText = reassembleAssistantText(stdout);
+        const effectiveStdout = assistantText.length > 0 ? assistantText : stdout;
         resolve({
-          stdout, stderr, exitCode: code ?? -1, durationMs,
+          stdout: effectiveStdout, stderr, exitCode: code ?? -1, durationMs,
           tokenUsage: parseStreamJsonUsage(stdout),
         });
       });

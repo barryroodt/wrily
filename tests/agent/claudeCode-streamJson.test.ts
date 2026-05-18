@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStreamJsonUsage } from '../../src/agent/claudeCode.js';
+import { parseStreamJsonUsage, reassembleAssistantText } from '../../src/agent/claudeCode.js';
 
 describe('parseStreamJsonUsage', () => {
   it('extracts usage and cost from a well-formed stream-json stdout', () => {
@@ -48,5 +48,47 @@ describe('parseStreamJsonUsage', () => {
       '{"type":"result","subtype":"success","total_cost_usd":0.99,"usage":{"input_tokens":99,"output_tokens":99}}',
     ].join('\n');
     expect(parseStreamJsonUsage(stdout)?.costUsd).toBe(0.99);
+  });
+});
+
+describe('reassembleAssistantText', () => {
+  it('concatenates text blocks from assistant events in order', () => {
+    const stdout = [
+      '{"type":"system","subtype":"init"}',
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello "}]}}',
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"world"}]}}',
+      '{"type":"result","subtype":"success","total_cost_usd":0.01,"usage":{"input_tokens":1,"output_tokens":2}}',
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe('Hello world');
+  });
+
+  it('preserves a ```json fence so extractFindings can match it', () => {
+    const fenced = '```json\n{"findings":[]}\n```';
+    const stdout = [
+      '{"type":"system","subtype":"init"}',
+      `{"type":"assistant","message":{"content":[{"type":"text","text":${JSON.stringify(fenced)}}]}}`,
+      '{"type":"result","subtype":"success","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}',
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe(fenced);
+  });
+
+  it('handles assistant events with multiple text blocks in one content array', () => {
+    const stdout = '{"type":"assistant","message":{"content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}}\n';
+    expect(reassembleAssistantText(stdout)).toBe('ab');
+  });
+
+  it('ignores non-text content blocks (e.g. tool_use)', () => {
+    const stdout = '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"x"},{"type":"text","text":"only-text"}]}}\n';
+    expect(reassembleAssistantText(stdout)).toBe('only-text');
+  });
+
+  it('returns empty string when no assistant events present', () => {
+    const stdout = '{"type":"system","subtype":"init"}\n{"type":"result","subtype":"success","usage":{}}\n';
+    expect(reassembleAssistantText(stdout)).toBe('');
+  });
+
+  it('skips malformed lines silently', () => {
+    const stdout = 'not json\n{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n';
+    expect(reassembleAssistantText(stdout)).toBe('ok');
   });
 });
