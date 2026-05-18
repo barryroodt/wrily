@@ -534,7 +534,18 @@ export function makeSteps(deps: WorkflowDeps) {
         }
       }
 
-      const baseArgs = { owner, repo, prNumber: state.env.prNumber, commitSha: state.env.commitSha };
+      // Refresh commit SHA from the PR — the review may have taken minutes
+      // and the original commit SHA could be stale (force-push, rebase, etc.).
+      // GitHub returns 422 "invalid value" for out-of-date commit_id.
+      let commitSha = state.env.commitSha;
+      try {
+        const { data: pr } = await deps.octokit.rest.pulls.get({ owner, repo, pull_number: state.env.prNumber });
+        commitSha = pr.head.sha;
+      } catch {
+        console.warn(`[postToGitHub] failed to refresh PR head SHA, using original: ${commitSha}`);
+      }
+
+      const baseArgs = { owner, repo, prNumber: state.env.prNumber, commitSha };
 
       const inlineComments = (state.actions ?? []).flatMap((a) =>
         a.action === 'new_comment'
