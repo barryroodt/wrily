@@ -31,6 +31,7 @@ function parseArgs(argv: string[]): Args {
       out.json = true;
     } else if (a === '--help' || a === '-h') {
       console.log('Usage: wrily costs [--since 30d] [--by repo|model|day] [--repo owner/repo] [--json]');
+      console.log('  --repo cannot be combined with --by model (model rollup spans repos).');
       process.exit(0);
     }
   }

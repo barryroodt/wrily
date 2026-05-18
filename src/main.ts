@@ -5,6 +5,7 @@ import { parseWrilyYml, applyEnvOverrides } from './config/wrilyYml.js';
 import { selectRunner } from './agent/factory.js';
 import { buildReviewWorkflow, type WorkflowState } from './workflow/index.js';
 import { maybePostFailure } from './post/failureFallback.js';
+import { persistFailureRun } from './persist/failure.js';
 
 function logError(err: unknown): void {
   console.error(JSON.stringify({
@@ -39,7 +40,9 @@ async function main(): Promise<void> {
 
     if (result.status !== 'success') {
       const err = result.status === 'failed' ? result.error : new Error(`workflow ${result.status}`);
-      await maybePostFailure(env, octokit, err instanceof Error ? err : new Error(String(err)));
+      const normalized = err instanceof Error ? err : new Error(String(err));
+      await maybePostFailure(env, octokit, normalized);
+      await persistFailureRun(env, cfg, normalized);
       logError(err);
       process.exit(1);
     }
@@ -47,7 +50,9 @@ async function main(): Promise<void> {
     console.log('Wrily review complete.');
   } catch (err) {
     // run.start() shouldn't reject for WorkflowResult shape but guard anyway.
-    await maybePostFailure(env, octokit, err instanceof Error ? err : new Error(String(err)));
+    const normalized = err instanceof Error ? err : new Error(String(err));
+    await maybePostFailure(env, octokit, normalized);
+    await persistFailureRun(env, cfg, normalized);
     logError(err);
     process.exit(1);
   }

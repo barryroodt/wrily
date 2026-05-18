@@ -95,38 +95,97 @@ export async function recordReviewRun(
   }
 }
 
+type RawRunRow = {
+  inserted_at: string;
+  github_repo: string;
+  model: string;
+  review_mode: 'single' | 'team';
+  cost_usd: number | string;
+  input_tokens: number | string;
+  output_tokens: number | string;
+};
+
+function roundTo6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}
+
+/**
+ * Aggregate raw run rows by the requested axis on the client side. The
+ * pre-built views in 0002_views.sql are still handy in Supabase Studio
+ * but the CLI ignores them so that `--since`, `--repo`, and `--by day`
+ * all interact correctly with a single code path.
+ */
+export function aggregateRuns(rows: RawRunRow[], by: 'repo' | 'model' | 'day'): CostsResult['rows'] {
+  type Acc = { runs: number; cost: number; tokens: number };
+  const groups = new Map<string, Acc>();
+  for (const r of rows) {
+    const key =
+      by === 'repo' ? r.github_repo :
+      by === 'model' ? `${r.model}|${r.review_mode}` :
+      r.inserted_at.slice(0, 10); // YYYY-MM-DD
+    const acc = groups.get(key) ?? { runs: 0, cost: 0, tokens: 0 };
+    acc.runs += 1;
+    acc.cost += Number(r.cost_usd);
+    acc.tokens += Number(r.input_tokens) + Number(r.output_tokens);
+    groups.set(key, acc);
+  }
+  const out: CostsResult['rows'] = [];
+  for (const [key, acc] of groups) {
+    if (by === 'repo') {
+      out.push({ github_repo: key, runs: acc.runs, cost_usd: roundTo6(acc.cost), total_tokens: acc.tokens });
+    } else if (by === 'model') {
+      const [model, review_mode] = key.split('|');
+      out.push({
+        model: model!,
+        review_mode: review_mode!,
+        runs: acc.runs,
+        cost_usd: roundTo6(acc.cost),
+        avg_cost_usd: roundTo6(acc.cost / acc.runs),
+      });
+    } else {
+      out.push({ day: key, runs: acc.runs, cost_usd: roundTo6(acc.cost), total_tokens: acc.tokens });
+    }
+  }
+  if (by === 'day') {
+    out.sort((a, b) => String(b.day).localeCompare(String(a.day)));
+  } else {
+    out.sort((a, b) => Number(b.cost_usd) - Number(a.cost_usd));
+  }
+  return out;
+}
+
 export async function queryCosts(env: RuntimeEnv, query: CostsQuery): Promise<CostsResult> {
   if (!env.supabase) throw new Error('Supabase persistence is not configured.');
+
+  // `--repo` filters by github_repo, which the model rollup deliberately
+  // spans across (a model's cost dynamic is the same regardless of repo).
+  // Rather than silently drop the filter, fail loudly so the operator can
+  // pick a combination that returns the data they asked for.
+  if (query.repo && query.by === 'model') {
+    throw new Error('--repo cannot be combined with --by model (model rollup spans repos)');
+  }
+
   const { url, serviceRoleKey } = env.supabase;
   const headers = {
     apikey: serviceRoleKey,
     Authorization: `Bearer ${serviceRoleKey}`,
   };
-  const view =
-    query.by === 'repo' ? 'spend_by_repo_30d' :
-    query.by === 'model' ? 'spend_by_model_30d' :
-    null;
-  const target = view ? `${url}/rest/v1/${view}?select=*` : buildDayRollupUrl(url, query);
-  const filtered = query.repo && view === 'spend_by_repo_30d'
-    ? `${target}&github_repo=eq.${encodeURIComponent(query.repo)}`
-    : target;
-  const res = await fetch(filtered, { headers });
+
+  const since = new Date(Date.now() - query.sinceDays * 86_400_000).toISOString();
+  const params = new URLSearchParams({
+    select: 'inserted_at,github_repo,model,review_mode,cost_usd,input_tokens,output_tokens',
+    'inserted_at': `gte.${since}`,
+    status: 'eq.success',
+    order: 'inserted_at.desc',
+    limit: '10000',
+  });
+  if (query.repo) params.append('github_repo', `eq.${query.repo}`);
+
+  const res = await fetch(`${url}/rest/v1/review_runs?${params.toString()}`, { headers });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Supabase query failed: ${res.status} ${body}`);
   }
-  const rows = (await res.json()) as CostsResult['rows'];
-  return { rows };
-}
-
-function buildDayRollupUrl(url: string, query: CostsQuery): string {
-  const since = new Date(Date.now() - query.sinceDays * 86_400_000).toISOString();
-  const params = new URLSearchParams({
-    select: 'inserted_at,github_repo,model,cost_usd,input_tokens,output_tokens',
-    'inserted_at': `gte.${since}`,
-    status: 'eq.success',
-    order: 'inserted_at.desc',
-  });
-  if (query.repo) params.append('github_repo', `eq.${query.repo}`);
-  return `${url}/rest/v1/review_runs?${params.toString()}`;
+  const rows = (await res.json()) as RawRunRow[];
+  return { rows: aggregateRuns(rows, query.by) };
 }
