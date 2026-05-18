@@ -223,6 +223,50 @@ A typical handoff message:
 - **Upgrading Wrily** — `git pull upstream main` on your fork, resolve any conflicts in the workflow files (the references you swapped in step 1 will reappear in some upstream PRs), tag a new `v*` release, redeploy the Worker only if `integrations/cloudflare-worker/` changed.
 - **Cost** — Anthropic API spend per review (caps configurable via `max_budget_usd` in `.wrily.yml`). Cloudflare Worker invocations + GitHub Actions minutes both fall well within free tiers for typical org volume.
 
+## Optional: cost tracking
+
+Wrily can persist per-review token + USD cost to a self-hosted Supabase project.
+Reviews still work without this enabled — it's purely additive.
+
+### Prerequisites
+
+- The official `supabase` CLI: `brew install supabase/tap/supabase` or `npm i -g supabase`.
+
+### One-shot bootstrap
+
+```bash
+./wrily persistence init
+```
+
+This walks you through:
+
+1. Logging in to Supabase (browser flow on first run).
+2. Picking an org and naming the project (defaults are sensible).
+3. Creating the project + waiting for it to become healthy (1–3 min).
+4. Writing `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` to your fork's `.env`.
+5. Applying the schema (`supabase/migrations/*.sql`).
+
+### Day-to-day
+
+```bash
+./wrily costs                          # last 30d totals, top repos
+./wrily costs --since 7d --by model    # last 7d, grouped by model
+./wrily persistence status             # check enabled + row counts
+./wrily persistence migrate            # re-apply pending migrations
+```
+
+### What gets stored
+
+- Per-run: repo, PR, commit, model, mode, scope, status, duration, findings posted, token usage, USD cost.
+- Per-subagent (team mode): the same usage breakdown per parallel reviewer.
+
+Nothing else — no PR content, no findings text, no commit diffs.
+
+### Failure modes
+
+If Supabase is unreachable, the review still ships; the cost row is dropped
+after two retries and a structured warning lands in the workflow logs.
+
 ## Security
 
 - The App's private key only lives in two places: the Cloudflare Worker secret store (encrypted at rest) and the offline `.pem` you downloaded. **Don't commit the PEM. Don't put it in `wrangler.jsonc` `vars`.**
