@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Test stub for the `supabase` CLI. Behavior is driven by env vars set by
+# the test harness:
+#   STUB_SUPABASE_EXIT=<n>      → exit with this code (default 0)
+#   STUB_SUPABASE_STDOUT=<json> → echo this to stdout
+#   STUB_SUPABASE_STDERR=<msg>  → echo this to stderr
+echo "${STUB_SUPABASE_STDOUT:-}"
+if [[ -n "${STUB_SUPABASE_STDERR:-}" ]]; then echo "${STUB_SUPABASE_STDERR}" >&2; fi
+exit "${STUB_SUPABASE_EXIT:-0}"
