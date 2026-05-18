@@ -22,6 +22,7 @@ export function buildReviewWorkflow(deps: WorkflowDeps) {
     .then(steps.routeFindingsStep)
     .then(steps.postToGitHubStep)
     .then(steps.resolveAddressedThreadsStep)
+    .then(steps.persistUsageStep)
     .commit();
 }
 

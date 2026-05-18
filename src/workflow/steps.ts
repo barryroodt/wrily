@@ -29,6 +29,8 @@ import { postReview, replyInThread } from '../post/github.js';
 import { renderReviewBody } from '../post/body.js';
 import type { AgentRunner } from '../agent/runner.js';
 import type { Octokit } from '@octokit/rest';
+import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
+import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -42,6 +44,16 @@ const GIT_TIMEOUT_MS = 120_000;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function collapseTriggerSource(raw: string): 'github_app' | 'local_cli' {
+  return raw === 'local_cli' ? 'local_cli' : 'github_app';
+}
+
+function deriveRunStatus(state: WorkflowState): 'success' | 'budget_exceeded' | 'timeout' | 'failed' {
+  if (!state.agentResults || state.agentResults.length === 0) return 'failed';
+  if (state.fallbackUsed) return 'failed';
+  return 'success';
 }
 
 function redactSecrets(message: string, secrets: string[]): string {
@@ -564,6 +576,70 @@ export function makeSteps(deps: WorkflowDeps) {
     },
   });
 
+  const persistUsageStep = createStep({
+    id: 'persistUsage',
+    inputSchema: workflowStateSchema,
+    outputSchema: workflowStateSchema,
+    execute: async ({ inputData }) => {
+      const state = inputData;
+      if (!isPersistenceEnabled(state.env)) return state;
+      try {
+        const status = deriveRunStatus(state);
+        const agentResults = state.agentResults ?? [];
+        const totalDuration = agentResults.reduce((sum, r) => sum + r.durationMs, 0);
+        const totals = agentResults.reduce(
+          (acc, r) => {
+            const u = r.tokenUsage;
+            if (!u) return acc;
+            acc.input += u.inputTokens;
+            acc.output += u.outputTokens;
+            acc.cacheRead += u.cacheReadTokens ?? 0;
+            acc.cacheWrite += u.cacheWriteTokens ?? 0;
+            acc.cost += u.costUsd ?? 0;
+            return acc;
+          },
+          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+        );
+
+        const run: ReviewRunRecord = {
+          github_repo: state.env.githubRepository,
+          pr_number: state.env.prNumber,
+          commit_sha: state.env.commitSha,
+          trigger_source: collapseTriggerSource(state.env.triggerSource),
+          review_round: state.reviewRoundIndex ?? state.env.reviewRoundIndex ?? 0,
+          model: state.cfg.model,
+          review_mode: state.reviewMode === 'team' ? 'team' : 'single',
+          scope: state.reviewType === 'delta' ? 'delta' : 'full',
+          max_budget_usd: state.cfg.max_budget_usd ?? null,
+          status,
+          duration_ms: totalDuration,
+          findings_posted: status === 'success' ? (state.findings ? state.findings.length : 0) : null,
+          input_tokens: totals.input,
+          output_tokens: totals.output,
+          cache_read_tokens: totals.cacheRead,
+          cache_write_tokens: totals.cacheWrite,
+          cost_usd: totals.cost,
+        };
+
+        const subagents: SubagentRecord[] = agentResults.map((r, idx) => ({
+          role: state.reviewMode === 'team' ? `team-${idx}` : 'single',
+          model: state.cfg.model,
+          duration_ms: r.durationMs,
+          input_tokens: r.tokenUsage?.inputTokens ?? 0,
+          output_tokens: r.tokenUsage?.outputTokens ?? 0,
+          cache_read_tokens: r.tokenUsage?.cacheReadTokens ?? 0,
+          cache_write_tokens: r.tokenUsage?.cacheWriteTokens ?? 0,
+          cost_usd: r.tokenUsage?.costUsd ?? 0,
+        }));
+
+        await recordReviewRun(state.env, run, subagents);
+      } catch (err) {
+        console.warn(`[persistUsage] failed: ${(err as Error).message}`);
+      }
+      return state;
+    },
+  });
+
   return {
     cloneRepoStep,
     loadConfigStep,
@@ -577,5 +653,6 @@ export function makeSteps(deps: WorkflowDeps) {
     routeFindingsStep,
     resolveAddressedThreadsStep,
     postToGitHubStep,
+    persistUsageStep,
   };
 }
