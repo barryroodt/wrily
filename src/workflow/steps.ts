@@ -31,6 +31,7 @@ import type { AgentRunner } from '../agent/runner.js';
 import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
+import { markUsagePersisted } from '../persist/state.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -51,8 +52,11 @@ function collapseTriggerSource(raw: string): 'github_app' | 'local_cli' {
 }
 
 function deriveRunStatus(state: WorkflowState): 'success' | 'budget_exceeded' | 'timeout' | 'failed' {
+  // persistUsageStep runs immediately after routeFindings (before the
+  // GitHub post). At this point fallbackUsed is not yet known — treat the
+  // run as successful if the agent produced results. Post-step issues
+  // (fallback, 422s, etc.) are tracked separately in workflow logs.
   if (!state.agentResults || state.agentResults.length === 0) return 'failed';
-  if (state.fallbackUsed) return 'failed';
   return 'success';
 }
 
@@ -644,6 +648,9 @@ export function makeSteps(deps: WorkflowDeps) {
         }));
 
         await recordReviewRun(state.env, run, subagents);
+        // Mark so main.ts's failure-path persistence doesn't double-write
+        // if a later step (postToGitHub, resolveAddressedThreads) throws.
+        markUsagePersisted();
       } catch (err) {
         console.warn(`[persistUsage] failed: ${(err as Error).message}`);
       }
