@@ -27,33 +27,46 @@ export type SupabaseRunOptions = {
    * messages built from `args.join(' ')`.
    */
   env?: Record<string, string>;
+  /**
+   * When true, the child inherits the parent's stdio. Use this for
+   * interactive subcommands like `supabase login` that need a real TTY to
+   * detect terminal capabilities and drive prompts / browser handoff.
+   * Defaults to false — stdout/stderr are captured so callers can parse
+   * `--output json` payloads.
+   */
+  interactive?: boolean;
 };
 
 export function runSupabase(args: string[], opts: SupabaseRunOptions = {}): Promise<SupabaseRunResult> {
   return new Promise((resolvePromise, rejectPromise) => {
+    const interactive = opts.interactive === true;
     const child = spawn('supabase', args, {
       cwd: opts.cwd,
       env: opts.env ? { ...process.env, ...opts.env } : process.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
     });
     const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
-    child.stdout.on('data', (c) => outChunks.push(c));
-    child.stderr.on('data', (c) => errChunks.push(c));
+    if (!interactive) {
+      child.stdout!.on('data', (c) => outChunks.push(c));
+      child.stderr!.on('data', (c) => errChunks.push(c));
+    }
     child.once('error', rejectPromise);
     child.once('close', (code) => {
-      const stdout = Buffer.concat(outChunks).toString('utf8');
-      const stderr = Buffer.concat(errChunks).toString('utf8');
+      const stdout = interactive ? '' : Buffer.concat(outChunks).toString('utf8');
+      const stderr = interactive ? '' : Buffer.concat(errChunks).toString('utf8');
       if (code !== 0) {
         rejectPromise(new Error(`supabase ${args.join(' ')} exited ${code}: ${stderr.trim() || stdout.trim()}`));
         return;
       }
       resolvePromise({ stdout, stderr, exitCode: code });
     });
-    if (opts.input) {
-      child.stdin.end(opts.input);
-    } else {
-      child.stdin.end();
+    if (!interactive) {
+      if (opts.input) {
+        child.stdin!.end(opts.input);
+      } else {
+        child.stdin!.end();
+      }
     }
   });
 }

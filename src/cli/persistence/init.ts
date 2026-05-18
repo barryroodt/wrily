@@ -22,11 +22,25 @@ async function prompt(label: string, fallback?: string): Promise<string> {
 async function ensureLoggedIn(): Promise<void> {
   try {
     await runSupabase(['projects', 'list', '--output', 'json']);
+    return;
   } catch (err) {
-    if (!/Access token not provided|login/i.test((err as Error).message)) throw err;
-    console.log('Not logged in to Supabase. Opening browser for login...');
-    await runSupabase(['login']);
+    const msg = (err as Error).message;
+    if (!/Access token not provided|login|not logged in/i.test(msg)) throw err;
   }
+  // Fast path: caller already exported SUPABASE_ACCESS_TOKEN. We hit this
+  // when the env was missing on the first attempt — re-check after asking
+  // the user to provide it.
+  if (process.env.SUPABASE_ACCESS_TOKEN) {
+    throw new Error(
+      'SUPABASE_ACCESS_TOKEN is set but `supabase projects list` still rejected it. Verify the token at https://supabase.com/dashboard/account/tokens.',
+    );
+  }
+  console.log('Not logged in to Supabase.');
+  console.log('Two options — pick whichever is easier:');
+  console.log('  (a) export SUPABASE_ACCESS_TOKEN=sbp_... from https://supabase.com/dashboard/account/tokens, then re-run');
+  console.log('  (b) run interactive browser login now (requires a TTY)');
+  console.log('Attempting (b)...');
+  await runSupabase(['login'], { interactive: true });
 }
 
 type Org = { id: string; name: string };
