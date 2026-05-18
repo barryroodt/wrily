@@ -136,4 +136,45 @@ describe('parseEnv', () => {
     expect(parseEnv(minimal).replyFeedbackOverride).toBe('');
     expect(() => parseEnv({ ...minimal, REPLY_FEEDBACK: 'maybe' })).toThrow();
   });
+
+  describe('supabase env', () => {
+    it('returns env.supabase = null when both vars absent', () => {
+      const env = parseEnv(minimal);
+      expect(env.supabase).toBeNull();
+    });
+
+    it('returns env.supabase populated when both vars set', () => {
+      const env = parseEnv({
+        ...minimal,
+        SUPABASE_URL: 'https://abc.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service-role.key',
+      });
+      expect(env.supabase).toEqual({
+        url: 'https://abc.supabase.co',
+        serviceRoleKey: 'eyJ.service-role.key',
+      });
+    });
+
+    it('throws when only SUPABASE_URL is set', () => {
+      expect(() =>
+        parseEnv({ ...minimal, SUPABASE_URL: 'https://abc.supabase.co' }),
+      ).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+    });
+
+    it('throws when only SUPABASE_SERVICE_ROLE_KEY is set', () => {
+      expect(() =>
+        parseEnv({ ...minimal, SUPABASE_SERVICE_ROLE_KEY: 'eyJ.key' }),
+      ).toThrow(/SUPABASE_URL/);
+    });
+
+    it('rejects malformed SUPABASE_URL', () => {
+      expect(() =>
+        parseEnv({
+          ...minimal,
+          SUPABASE_URL: 'not-a-url',
+          SUPABASE_SERVICE_ROLE_KEY: 'eyJ.key',
+        }),
+      ).toThrow();
+    });
+  });
 });

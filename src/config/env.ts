@@ -56,6 +56,14 @@ const rawEnvSchema = z.object({
     .refine((v) => v === '' || v === 'on' || v === 'off', {
       message: "REPLY_FEEDBACK must be one of '', 'on', or 'off'",
     }),
+  SUPABASE_URL: z
+    .string()
+    .optional()
+    .default('')
+    .refine((v) => v === '' || /^https?:\/\/.+/.test(v), {
+      message: 'SUPABASE_URL must be a valid URL',
+    }),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
 });
 
 export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
@@ -68,6 +76,19 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   }
 
   const authMethod = parsed.CLAUDE_CODE_OAUTH_TOKEN ? 'oauth' : 'api_key';
+
+  const supabaseUrl = parsed.SUPABASE_URL;
+  const supabaseKey = parsed.SUPABASE_SERVICE_ROLE_KEY;
+  if (!!supabaseUrl !== !!supabaseKey) {
+    throw new Error(
+      supabaseUrl
+        ? 'SUPABASE_URL is set but SUPABASE_SERVICE_ROLE_KEY is missing. Set both or neither.'
+        : 'SUPABASE_SERVICE_ROLE_KEY is set but SUPABASE_URL is missing. Set both or neither.',
+    );
+  }
+  const supabase = supabaseUrl && supabaseKey
+    ? { url: supabaseUrl, serviceRoleKey: supabaseKey }
+    : null;
 
   return {
     authMethod,
@@ -91,5 +112,6 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     triggerSource: parsed.WRILY_TRIGGER_SOURCE,
     actor: parsed.GITHUB_ACTOR,
     replyFeedbackOverride: parsed.REPLY_FEEDBACK as '' | 'on' | 'off',
+    supabase,
   };
 }
