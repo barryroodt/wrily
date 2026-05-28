@@ -37,4 +37,5 @@ thiserror = "2"
 [dev-dependencies]
 wrily-rig-evals = { path = "evals" }
 rig-core = "0.37.0"
+tempfile = "3"
 wiremock = "0.6"
