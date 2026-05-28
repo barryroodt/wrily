@@ -1,6 +1,5 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::io::{ErrorKind as IoErrorKind, Write};
 
 pub const TRUNCATE_MARKER: &str = "…[truncated]";
 
@@ -144,18 +143,9 @@ impl WrilyEvent {
         }
     }
 
-    /// Emit as one NDJSON line on stdout + flush.
-    /// `BrokenPipe` is swallowed (parent closed; treat as graceful shutdown).
-    /// Other IO/serde errors propagate.
+    /// Emit as one NDJSON line on stdout + flush (via [`crate::emitter::EventEmitter`]).
     pub fn emit(&self) -> Result<()> {
-        let line = serde_json::to_string(self)?;
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        match writeln!(handle, "{line}").and_then(|_| handle.flush()) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == IoErrorKind::BrokenPipe => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        crate::emitter::EventEmitter::global().emit(self)
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::events::WrilyEvent;
 use std::io::{BufWriter, ErrorKind as IoErrorKind, Write};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+
+static STDOUT_EMITTER: OnceLock<EventEmitter<std::io::Stdout>> = OnceLock::new();
 
 pub struct EventEmitter<W: Write + Send> {
     inner: Mutex<BufWriter<W>>,
@@ -44,5 +46,9 @@ impl<W: Write + Send> EventEmitter<W> {
 impl EventEmitter<std::io::Stdout> {
     pub fn stdout() -> Self {
         Self::new(std::io::stdout())
+    }
+
+    pub fn global() -> &'static Self {
+        STDOUT_EMITTER.get_or_init(Self::stdout)
     }
 }
