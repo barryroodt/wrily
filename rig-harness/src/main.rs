@@ -1,10 +1,12 @@
 use wrily_rig::{
-    cli::Cli,
+    cli::{Cli, Mode},
     events::{now_ms, ErrorKind, ExitCode, WrilyEvent},
+    mode,
     tracing_setup::{init_tracing, install_panic_hook},
 };
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     init_tracing();
     install_panic_hook();
 
@@ -35,6 +37,18 @@ fn main() -> anyhow::Result<()> {
     }
     .emit()?;
 
-    WrilyEvent::terminal(ExitCode::Ok).emit()?;
+    let exit = match v.mode {
+        Mode::Single => mode::single::run_single(v).await,
+        Mode::Team => {
+            let _ = WrilyEvent::Error {
+                ts: now_ms(),
+                kind: ErrorKind::Config,
+                message: "team mode not yet implemented (Phase 5.3)".into(),
+            }
+            .emit();
+            ExitCode::Config
+        }
+    };
+    WrilyEvent::terminal(exit).emit()?;
     Ok(())
 }
