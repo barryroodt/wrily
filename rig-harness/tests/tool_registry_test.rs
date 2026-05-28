@@ -4,15 +4,21 @@ use wrily_rig::events::WrilyEvent;
 use wrily_rig::tools::ToolRegistry;
 use wrily_rig_evals::assertions::assert_tool_call_pairing;
 
-const EXPECTED_TOOL_NAMES: [&str; 5] =
-    ["read_file", "list_files", "find_files", "git_diff", "shell"];
+const EXPECTED_TOOL_NAMES: [&str; 6] = [
+    "read_file",
+    "list_files",
+    "find_files",
+    "git_diff",
+    "shell",
+    "skill_load",
+];
 
 #[test]
-fn schemas_returns_five_stable_tool_names() {
+fn schemas_returns_six_stable_tool_names() {
     let registry = ToolRegistry::new(std::env::temp_dir());
     let schemas = registry.schemas();
 
-    assert_eq!(schemas.len(), 5);
+    assert_eq!(schemas.len(), 6);
     let names: Vec<&str> = schemas.iter().map(|schema| schema.name.as_str()).collect();
     assert_eq!(names, EXPECTED_TOOL_NAMES);
 }
