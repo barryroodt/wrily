@@ -6,6 +6,7 @@ use crate::cli::Provider;
 pub mod anthropic;
 pub mod gemini;
 pub mod openai;
+mod rig_convert;
 
 pub use anthropic::AnthropicProvider;
 pub use gemini::GeminiProvider;
