@@ -39,5 +39,8 @@ fn main() {
         println!("cargo:rerun-if-changed={}", src.display());
     }
 
-    println!("cargo:rerun-if-changed={}", manifest_dir.join("build.rs").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("build.rs").display()
+    );
 }

@@ -45,9 +45,12 @@ impl TokenMeter {
     ) -> Result<(), BudgetExceeded> {
         self.total_input.fetch_add(input, Ordering::SeqCst);
         self.total_output.fetch_add(output, Ordering::SeqCst);
-        self.total_cache_read.fetch_add(cache_read, Ordering::SeqCst);
-        self.total_cache_write.fetch_add(cache_write, Ordering::SeqCst);
-        let total = self.total_input.load(Ordering::SeqCst) + self.total_output.load(Ordering::SeqCst);
+        self.total_cache_read
+            .fetch_add(cache_read, Ordering::SeqCst);
+        self.total_cache_write
+            .fetch_add(cache_write, Ordering::SeqCst);
+        let total =
+            self.total_input.load(Ordering::SeqCst) + self.total_output.load(Ordering::SeqCst);
         if total >= self.limit {
             // CAS so only the first crossing emits.
             if self

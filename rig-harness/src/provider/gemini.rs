@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use rig_core::{
-    OneOrMany,
     client::CompletionClient,
     completion::{CompletionModel, CompletionRequest, ToolDefinition},
     message::{AssistantContent, Message, ToolResultContent, UserContent},
     providers::gemini::{self, completion::CompletionModel as GeminiCompletionModel},
+    OneOrMany,
 };
 
 use crate::cli::Provider;

@@ -18,8 +18,7 @@ impl AssertionFailure {
     }
 }
 
-type ExpectedAssertion =
-    fn(&[WrilyEvent], &Expected) -> Result<(), AssertionFailure>;
+type ExpectedAssertion = fn(&[WrilyEvent], &Expected) -> Result<(), AssertionFailure>;
 
 pub fn run_all(events: &[WrilyEvent], expected: &Expected) -> Vec<AssertionFailure> {
     let checks: &[(&str, ExpectedAssertion)] = &[
@@ -171,10 +170,7 @@ pub fn assert_token_budget(
     Ok(())
 }
 
-pub fn assert_duration(
-    events: &[WrilyEvent],
-    expected: &Expected,
-) -> Result<(), AssertionFailure> {
+pub fn assert_duration(events: &[WrilyEvent], expected: &Expected) -> Result<(), AssertionFailure> {
     let Some(max_duration_ms) = expected.max_duration_ms else {
         return Ok(());
     };
@@ -213,7 +209,9 @@ pub fn assert_tool_call_pairing(events: &[WrilyEvent]) -> Result<(), AssertionFa
                 } else {
                     return Err(AssertionFailure::new(
                         "assert_tool_call_pairing",
-                        format!("unmatched tool_result for role={role:?} turn={turn} tool={tool:?}"),
+                        format!(
+                            "unmatched tool_result for role={role:?} turn={turn} tool={tool:?}"
+                        ),
                     ));
                 }
             }
@@ -232,7 +230,10 @@ pub fn assert_tool_call_pairing(events: &[WrilyEvent]) -> Result<(), AssertionFa
 }
 
 fn terminal_result(events: &[WrilyEvent]) -> Option<&WrilyEvent> {
-    events.iter().rev().find(|event| matches!(event, WrilyEvent::Result { .. }))
+    events
+        .iter()
+        .rev()
+        .find(|event| matches!(event, WrilyEvent::Result { .. }))
 }
 
 fn parse_expected_exit(exit: &str) -> Result<ExitCode, AssertionFailure> {

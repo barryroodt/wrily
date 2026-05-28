@@ -49,9 +49,7 @@ fn chat_messages_to_rig(messages: &[ChatMessage]) -> anyhow::Result<Vec<completi
                 for tc in tool_calls {
                     let args = parse_tool_args(&tc.args_json)?;
                     content.push(completion::AssistantContent::tool_call(
-                        &tc.id,
-                        &tc.name,
-                        args,
+                        &tc.id, &tc.name, args,
                     ));
                 }
                 let content = if content.is_empty() {
@@ -59,10 +57,7 @@ fn chat_messages_to_rig(messages: &[ChatMessage]) -> anyhow::Result<Vec<completi
                 } else {
                     OneOrMany::many(content)?
                 };
-                out.push(completion::Message::Assistant {
-                    id: None,
-                    content,
-                });
+                out.push(completion::Message::Assistant { id: None, content });
             }
             ChatMessage::ToolResults(results) => {
                 for result in results {
@@ -78,9 +73,8 @@ fn parse_tool_args(args_json: &str) -> anyhow::Result<serde_json::Value> {
     if args_json.trim().is_empty() {
         return Ok(serde_json::json!({}));
     }
-    Ok(serde_json::from_str(args_json).unwrap_or_else(|_| {
-        serde_json::Value::String(args_json.to_string())
-    }))
+    Ok(serde_json::from_str(args_json)
+        .unwrap_or_else(|_| serde_json::Value::String(args_json.to_string())))
 }
 
 fn tool_result_to_rig(result: &ToolResult) -> Message {
@@ -103,7 +97,9 @@ fn tools_to_rig(tools: &[ToolSchema]) -> Vec<completion::ToolDefinition> {
         .collect()
 }
 
-fn openai_response_to_provider(raw: openai::completion::CompletionResponse) -> anyhow::Result<ProviderResponse> {
+fn openai_response_to_provider(
+    raw: openai::completion::CompletionResponse,
+) -> anyhow::Result<ProviderResponse> {
     let choice = raw
         .choices
         .first()

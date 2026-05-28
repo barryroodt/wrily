@@ -72,16 +72,15 @@ async fn dispatch_emits_paired_tool_call_and_tool_result_events() {
     let registry = ToolRegistry::new(dir.path().to_path_buf());
 
     let _ = registry
-        .dispatch(
-            "reviewer",
-            7,
-            "read_file",
-            r#"{"path":"tracked.txt"}"#,
-        )
+        .dispatch("reviewer", 7, "read_file", r#"{"path":"tracked.txt"}"#)
         .await;
 
     let events = guard.drain_events();
-    assert_eq!(events.len(), 2, "expected one tool_call and one tool_result");
+    assert_eq!(
+        events.len(),
+        2,
+        "expected one tool_call and one tool_result"
+    );
 
     match (&events[0], &events[1]) {
         (

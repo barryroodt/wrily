@@ -1,4 +1,4 @@
-use crate::events::{WrilyEvent, now_ms};
+use crate::events::{now_ms, WrilyEvent};
 use crate::provider::{ChatMessage, ProviderAdapter};
 use crate::tools::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -129,10 +129,9 @@ impl ReviewerRoster {
     pub async fn broadcast_summary(&self, args: BroadcastSummaryArgs) -> Result<String, String> {
         let roster = self.reviewers.lock().await;
         for r in roster.iter() {
-            let _ = r.messages_tx.send(format!(
-                "Round {} summary:\n{}",
-                args.round, args.summary
-            ));
+            let _ = r
+                .messages_tx
+                .send(format!("Round {} summary:\n{}", args.round, args.summary));
         }
         Ok(format!("broadcast to {} reviewers", roster.len()))
     }

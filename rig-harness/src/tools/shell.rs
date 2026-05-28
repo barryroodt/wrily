@@ -18,7 +18,8 @@ pub struct ShellArgs {
 fn safe_arg(a: &str) -> bool {
     !a.is_empty()
         && a.len() <= 1024
-        && a.chars().all(|c| c.is_alphanumeric() || "-_./=:,+@".contains(c))
+        && a.chars()
+            .all(|c| c.is_alphanumeric() || "-_./=:,+@".contains(c))
 }
 
 pub async fn shell(workdir: &Path, args: ShellArgs) -> Result<ToolOutput, ToolError> {

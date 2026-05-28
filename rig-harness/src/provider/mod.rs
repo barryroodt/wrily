@@ -76,7 +76,10 @@ pub fn build_adapter(
         Provider::OpenAi => Ok(Box::new(openai::OpenAiProvider::new(model)?)),
         Provider::Gemini => Ok(Box::new(GeminiProvider::new(model)?)),
         Provider::Cursor => {
-            anyhow::bail!("provider {:?} adapter not yet implemented (Phase 1.5)", provider)
+            anyhow::bail!(
+                "provider {:?} adapter not yet implemented (Phase 1.5)",
+                provider
+            )
         }
     }
 }

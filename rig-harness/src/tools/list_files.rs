@@ -18,7 +18,10 @@ pub async fn list_files(workdir: &Path, args: ListFilesArgs) -> Result<ToolOutpu
     let depth_cap = args.max_depth.unwrap_or(MAX_DEPTH).min(MAX_DEPTH);
     let root = resolve_workdir_path(&workdir, &args.path)?;
     if !root.is_dir() {
-        return Err(ToolError::InvalidInput(format!("not a directory: {}", args.path)));
+        return Err(ToolError::InvalidInput(format!(
+            "not a directory: {}",
+            args.path
+        )));
     }
     let mut entries = Vec::new();
     walk(&root, &workdir, depth_cap, 0, &mut entries)?;

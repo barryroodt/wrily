@@ -106,7 +106,9 @@ async fn complete_text_only_response_has_empty_tool_calls() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path_regex(r"/v1beta/models/gemini-2\.0-flash:generateContent"))
+        .and(path_regex(
+            r"/v1beta/models/gemini-2\.0-flash:generateContent",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(text_only_response()))
         .mount(&mock_server)
         .await;
@@ -130,7 +132,9 @@ async fn complete_function_call_response_synthesizes_tool_call_id() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path_regex(r"/v1beta/models/gemini-2\.0-flash:generateContent"))
+        .and(path_regex(
+            r"/v1beta/models/gemini-2\.0-flash:generateContent",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(function_call_response()))
         .mount(&mock_server)
         .await;
@@ -165,7 +169,9 @@ async fn complete_maps_cached_content_token_count_to_cache_read() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path_regex(r"/v1beta/models/gemini-2\.0-flash:generateContent"))
+        .and(path_regex(
+            r"/v1beta/models/gemini-2\.0-flash:generateContent",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(cached_usage_response()))
         .mount(&mock_server)
         .await;

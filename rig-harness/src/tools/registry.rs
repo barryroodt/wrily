@@ -1,7 +1,7 @@
 use super::{
     find_files, git_diff, list_files, read_file, shell, skill_load, subagent, ToolError, ToolOutput,
 };
-use crate::events::{WrilyEvent, now_ms, truncate_args};
+use crate::events::{now_ms, truncate_args, WrilyEvent};
 use crate::provider::{ProviderAdapter, ToolSchema};
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
@@ -74,7 +74,8 @@ impl ToolRegistry {
             },
             ToolSchema {
                 name: "skill_load".into(),
-                description: "Load a skill from workdir .claude/skills (no bundled fallback).".into(),
+                description: "Load a skill from workdir .claude/skills (no bundled fallback)."
+                    .into(),
                 json_schema: serde_json::json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}),
             },
         ]
@@ -108,7 +109,8 @@ impl ToolRegistry {
             },
             ToolSchema {
                 name: "broadcast_summary".into(),
-                description: "Deliver a cross-review digest to all reviewers for refinement.".into(),
+                description: "Deliver a cross-review digest to all reviewers for refinement."
+                    .into(),
                 json_schema: serde_json::json!({
                     "type":"object",
                     "properties":{
@@ -133,13 +135,7 @@ impl ToolRegistry {
     /// Dispatch one tool call. Emits `tool_call` and `tool_result` NDJSON events around execution.
     /// On tool error returns the error string in the ToolOutput.content with `error: <msg>` so the agent loop sees a tool_result, not a Rust Err
     /// (invariant #5: tools never abort the run).
-    pub async fn dispatch(
-        &self,
-        role: &str,
-        turn: u32,
-        name: &str,
-        args_json: &str,
-    ) -> ToolOutput {
+    pub async fn dispatch(&self, role: &str, turn: u32, name: &str, args_json: &str) -> ToolOutput {
         let args_for_event = truncate_args(args_json, 1024);
         let _ = WrilyEvent::ToolCall {
             ts: now_ms(),
@@ -230,9 +226,10 @@ impl ToolRegistry {
                 let team = self.team_tools()?;
                 let args: subagent::SpawnReviewerArgs = serde_json::from_str(args_json)
                     .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
-                let registry = team.registry.upgrade().ok_or_else(|| {
-                    ToolError::InvalidInput("team registry unavailable".into())
-                })?;
+                let registry = team
+                    .registry
+                    .upgrade()
+                    .ok_or_else(|| ToolError::InvalidInput("team registry unavailable".into()))?;
                 let content = team
                     .roster
                     .spawn_reviewer(

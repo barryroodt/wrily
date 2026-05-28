@@ -35,7 +35,10 @@ pub enum ToolError {
 }
 
 /// Resolve a relative path against `workdir`, rejecting symlink-traversal escapes.
-pub fn resolve_workdir_path(workdir: &std::path::Path, rel: &str) -> Result<std::path::PathBuf, ToolError> {
+pub fn resolve_workdir_path(
+    workdir: &std::path::Path,
+    rel: &str,
+) -> Result<std::path::PathBuf, ToolError> {
     let workdir = workdir.canonicalize().map_err(ToolError::Io)?;
     let joined = workdir.join(rel);
     let canonical = joined

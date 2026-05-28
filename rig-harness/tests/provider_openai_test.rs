@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 use wrily_rig::provider::{
@@ -168,7 +168,10 @@ async fn complete_maps_single_tool_call_and_token_usage() {
 
     let _env = EnvVarGuard::set_many(&[
         ("OPENAI_API_KEY", Some("test-openai-key")),
-        ("OPENAI_BASE_URL", Some(openai_base_url(&mock_server).as_str())),
+        (
+            "OPENAI_BASE_URL",
+            Some(openai_base_url(&mock_server).as_str()),
+        ),
     ]);
 
     let provider = OpenAiProvider::new("gpt-4o".into()).expect("provider");
@@ -210,8 +213,7 @@ async fn complete_maps_single_tool_call_and_token_usage() {
 
     assert_eq!(request_body["model"], "gpt-4o");
     assert_eq!(
-        request_body["messages"][0]["role"],
-        "system",
+        request_body["messages"][0]["role"], "system",
         "system prompt should be first message"
     );
     let system_content = &request_body["messages"][0]["content"];
@@ -242,16 +244,15 @@ async fn complete_preserves_parallel_tool_call_emission_order() {
 
     let _env = EnvVarGuard::set_many(&[
         ("OPENAI_API_KEY", Some("test-openai-key")),
-        ("OPENAI_BASE_URL", Some(openai_base_url(&mock_server).as_str())),
+        (
+            "OPENAI_BASE_URL",
+            Some(openai_base_url(&mock_server).as_str()),
+        ),
     ]);
 
     let provider = OpenAiProvider::new("gpt-4o".into()).expect("provider");
     let response = provider
-        .complete(
-            "System",
-            &[ChatMessage::User("Run both tools".into())],
-            &[],
-        )
+        .complete("System", &[ChatMessage::User("Run both tools".into())], &[])
         .await
         .expect("complete");
 
@@ -279,7 +280,10 @@ async fn complete_maps_cached_prompt_tokens_to_cache_read() {
 
     let _env = EnvVarGuard::set_many(&[
         ("OPENAI_API_KEY", Some("test-openai-key")),
-        ("OPENAI_BASE_URL", Some(openai_base_url(&mock_server).as_str())),
+        (
+            "OPENAI_BASE_URL",
+            Some(openai_base_url(&mock_server).as_str()),
+        ),
     ]);
 
     let provider = OpenAiProvider::new("gpt-4o".into()).expect("provider");
@@ -314,7 +318,10 @@ async fn complete_translates_assistant_tool_calls_and_tool_results_in_history() 
 
     let _env = EnvVarGuard::set_many(&[
         ("OPENAI_API_KEY", Some("test-openai-key")),
-        ("OPENAI_BASE_URL", Some(openai_base_url(&mock_server).as_str())),
+        (
+            "OPENAI_BASE_URL",
+            Some(openai_base_url(&mock_server).as_str()),
+        ),
     ]);
 
     let provider = OpenAiProvider::new("gpt-4o".into()).expect("provider");
@@ -349,9 +356,7 @@ async fn complete_translates_assistant_tool_calls_and_tool_results_in_history() 
         .clone()
         .expect("request body captured");
 
-    let messages = request_body["messages"]
-        .as_array()
-        .expect("messages array");
+    let messages = request_body["messages"].as_array().expect("messages array");
 
     let assistant = messages
         .iter()

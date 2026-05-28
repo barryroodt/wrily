@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 use wrily_rig::provider::{
@@ -212,24 +212,24 @@ async fn complete_sets_prompt_cache_breakpoints_on_system_and_last_user_message(
         .expect("request body captured");
 
     assert_eq!(
-        request_body["system"][0]["cache_control"]["type"],
-        "ephemeral",
+        request_body["system"][0]["cache_control"]["type"], "ephemeral",
         "system prompt should be marked for prompt caching"
     );
 
-    let messages = request_body["messages"]
-        .as_array()
-        .expect("messages array");
+    let messages = request_body["messages"].as_array().expect("messages array");
     let last_message = messages.last().expect("last message");
     assert_eq!(last_message["role"], "user");
     let last_content = last_message["content"]
         .as_array()
         .and_then(|items| items.last())
-        .or_else(|| last_message.get("content").filter(|value| value.is_object()))
+        .or_else(|| {
+            last_message
+                .get("content")
+                .filter(|value| value.is_object())
+        })
         .expect("last user content block");
     assert_eq!(
-        last_content["cache_control"]["type"],
-        "ephemeral",
+        last_content["cache_control"]["type"], "ephemeral",
         "last user message should be marked for prompt caching"
     );
     assert_eq!(last_content["text"], "latest user turn");

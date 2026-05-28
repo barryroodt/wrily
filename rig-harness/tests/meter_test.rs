@@ -50,12 +50,12 @@ fn post_trip_add_returns_err_without_second_event() {
 
     assert!(matches!(
         meter.add(30, 30, 0, 0),
-        Err(BudgetExceeded { limit: 50, total: 60 })
+        Err(BudgetExceeded {
+            limit: 50,
+            total: 60
+        })
     ));
-    assert!(matches!(
-        meter.add(1, 0, 0, 0),
-        Err(BudgetExceeded { .. })
-    ));
+    assert!(matches!(meter.add(1, 0, 0, 0), Err(BudgetExceeded { .. })));
 
     let events = guard.drain_events();
     assert_eq!(events.len(), 1);
@@ -97,11 +97,17 @@ fn concurrent_trip_emits_budget_exceeded_exactly_once() {
         }
     }
 
-    assert_eq!(budget_exceeded_events, 1, "budget_exceeded must emit exactly once");
+    assert_eq!(
+        budget_exceeded_events, 1,
+        "budget_exceeded must emit exactly once"
+    );
     assert!(cancel.is_cancelled());
     assert!(meter.tripped());
     assert!(err_count > 0, "at least one caller must see BudgetExceeded");
-    assert!(ok_count > 0, "callers finishing before the cap must still succeed");
+    assert!(
+        ok_count > 0,
+        "callers finishing before the cap must still succeed"
+    );
     assert_eq!(err_count + ok_count, 100);
 }
 

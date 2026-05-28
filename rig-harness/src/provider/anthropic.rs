@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use rig_core::{
-    OneOrMany,
     client::CompletionClient,
     completion::{CompletionModel, CompletionRequest, ToolDefinition},
     message::{AssistantContent, Message, ToolResultContent, UserContent},
     providers::anthropic::{
         self,
-        completion::{ANTHROPIC_VERSION_LATEST, CompletionModel as AnthropicCompletionModel},
+        completion::{CompletionModel as AnthropicCompletionModel, ANTHROPIC_VERSION_LATEST},
     },
+    OneOrMany,
 };
 
 use crate::cli::Provider;

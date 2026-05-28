@@ -1,5 +1,5 @@
-use crate::events::TRUNCATE_MARKER;
 use super::{ToolOutput, MAX_TOOL_OUTPUT_BYTES};
+use crate::events::TRUNCATE_MARKER;
 
 /// Build a `ToolOutput` from raw content, truncating to MAX_TOOL_OUTPUT_BYTES on a UTF-8 boundary.
 pub fn truncated_output(content: String) -> ToolOutput {

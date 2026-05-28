@@ -16,9 +16,8 @@ pub struct GitDiffArgs {
 fn valid_range(s: &str) -> bool {
     use regex::Regex;
     static RE_INIT: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let re = RE_INIT.get_or_init(|| {
-        Regex::new(r"^[A-Za-z0-9_./~-]+(\.\.\.?[A-Za-z0-9_./~-]+)?$").unwrap()
-    });
+    let re = RE_INIT
+        .get_or_init(|| Regex::new(r"^[A-Za-z0-9_./~-]+(\.\.\.?[A-Za-z0-9_./~-]+)?$").unwrap());
     !s.is_empty() && s.len() <= 256 && re.is_match(s)
 }
 
@@ -45,7 +44,9 @@ pub async fn git_diff(workdir: &Path, args: GitDiffArgs) -> Result<ToolOutput, T
         .await?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(ToolError::InvalidInput(format!("git diff failed: {stderr}")));
+        return Err(ToolError::InvalidInput(format!(
+            "git diff failed: {stderr}"
+        )));
     }
     let content = String::from_utf8_lossy(&out.stdout).into_owned();
     Ok(truncated_output(content))

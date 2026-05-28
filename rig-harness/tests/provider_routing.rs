@@ -52,13 +52,11 @@ fn build_adapter_anthropic_requires_api_key() {
     let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", None);
     let result = build_adapter(Provider::Anthropic, "claude-sonnet-4".into());
     assert!(result.is_err());
-    assert!(
-        result
-            .err()
-            .expect("error")
-            .to_string()
-            .contains("ANTHROPIC_API_KEY not set")
-    );
+    assert!(result
+        .err()
+        .expect("error")
+        .to_string()
+        .contains("ANTHROPIC_API_KEY not set"));
 }
 
 #[test]
@@ -66,13 +64,11 @@ fn build_adapter_openai_requires_api_key() {
     let _env = EnvVarGuard::set("OPENAI_API_KEY", None);
     let result = build_adapter(Provider::OpenAi, "gpt-4o".into());
     assert!(result.is_err());
-    assert!(
-        result
-            .err()
-            .expect("error")
-            .to_string()
-            .contains("OPENAI_API_KEY not set")
-    );
+    assert!(result
+        .err()
+        .expect("error")
+        .to_string()
+        .contains("OPENAI_API_KEY not set"));
 }
 
 #[test]
@@ -80,13 +76,11 @@ fn build_adapter_gemini_requires_api_key() {
     let _env = EnvVarGuard::set("GEMINI_API_KEY", None);
     let result = build_adapter(Provider::Gemini, "gemini-2.0-flash".into());
     assert!(result.is_err());
-    assert!(
-        result
-            .err()
-            .expect("error")
-            .to_string()
-            .contains("GEMINI_API_KEY not set")
-    );
+    assert!(result
+        .err()
+        .expect("error")
+        .to_string()
+        .contains("GEMINI_API_KEY not set"));
 }
 
 struct EnvVarGuard {
@@ -138,11 +132,7 @@ fn infer_provider_from_model_table() {
 
     for (model, expected) in cases {
         let cli = cli_for_model(&workdir, &prompt, model);
-        assert_eq!(
-            cli.resolve_provider().unwrap(),
-            expected,
-            "model {model}"
-        );
+        assert_eq!(cli.resolve_provider().unwrap(), expected, "model {model}");
     }
 }
 
