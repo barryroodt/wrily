@@ -1,5 +1,5 @@
 use super::{
-    find_files, git_diff, list_files, read_file, shell, ToolError, ToolOutput,
+    find_files, git_diff, list_files, read_file, shell, skill_load, ToolError, ToolOutput,
 };
 use crate::events::{WrilyEvent, now_ms, truncate_args};
 use crate::provider::ToolSchema;
@@ -42,6 +42,11 @@ impl ToolRegistry {
                 name: "shell".into(),
                 description: "Run an allowlisted shell program (git/cat/ls/find).".into(),
                 json_schema: serde_json::json!({"type":"object","properties":{"program":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}},"required":["program"]}),
+            },
+            ToolSchema {
+                name: "skill_load".into(),
+                description: "Load a skill from workdir .claude/skills (no bundled fallback).".into(),
+                json_schema: serde_json::json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}),
             },
         ]
     }
@@ -121,6 +126,11 @@ impl ToolRegistry {
                 let args: shell::ShellArgs = serde_json::from_str(args_json)
                     .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
                 shell::shell(&self.workdir, args).await
+            }
+            "skill_load" => {
+                let args: skill_load::SkillLoadArgs = serde_json::from_str(args_json)
+                    .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
+                skill_load::skill_load(&self.workdir, args).await
             }
             other => Err(ToolError::UnknownTool(other.into())),
         }
