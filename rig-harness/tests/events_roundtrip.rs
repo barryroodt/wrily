@@ -137,6 +137,11 @@ fn result_roundtrip() {
 }
 
 #[test]
+fn truncate_args_zero_limit_returns_marker() {
+    assert_eq!(truncate_args("anything", 0), TRUNCATE_MARKER);
+}
+
+#[test]
 fn truncate_args_ascii_within_limit() {
     assert_eq!(truncate_args("hello", 10), "hello");
 }

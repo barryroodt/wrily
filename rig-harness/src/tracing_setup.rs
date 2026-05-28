@@ -20,6 +20,7 @@ pub fn init_tracing() {
 
 pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
+        eprintln!("{info}");
         let _ = WrilyEvent::Error {
             ts: now_ms(),
             kind: ErrorKind::Internal,
