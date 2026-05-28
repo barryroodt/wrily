@@ -1,22 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { selectRunner } from '../../src/agent/factory.js';
-import { ClaudeCodeRunner } from '../../src/agent/claudeCode.js';
-import { CodexRunner } from '../../src/agent/codex.js';
+import { RigRunner } from '../../src/agent/rig.js';
 
 describe('selectRunner', () => {
-  it('returns ClaudeCodeRunner for Anthropic models', () => {
-    expect(selectRunner('opus')).toBeInstanceOf(ClaudeCodeRunner);
-    expect(selectRunner('sonnet')).toBeInstanceOf(ClaudeCodeRunner);
-    expect(selectRunner('haiku')).toBeInstanceOf(ClaudeCodeRunner);
-    expect(selectRunner('claude-opus-4-7')).toBeInstanceOf(ClaudeCodeRunner);
+  it('returns RigRunner for Anthropic models', () => {
+    expect(selectRunner('opus')).toBeInstanceOf(RigRunner);
+    expect(selectRunner('sonnet')).toBeInstanceOf(RigRunner);
+    expect(selectRunner('haiku')).toBeInstanceOf(RigRunner);
+    expect(selectRunner('claude-opus-4-7')).toBeInstanceOf(RigRunner);
   });
 
-  it('returns CodexRunner for OpenAI/GPT models', () => {
-    expect(selectRunner('gpt-5')).toBeInstanceOf(CodexRunner);
-    expect(selectRunner('gpt-4o')).toBeInstanceOf(CodexRunner);
+  it('returns RigRunner for OpenAI/GPT models', () => {
+    expect(selectRunner('gpt-5')).toBeInstanceOf(RigRunner);
+    expect(selectRunner('gpt-4o')).toBeInstanceOf(RigRunner);
   });
 
-  it('throws on unknown model', () => {
-    expect(() => selectRunner('mystery-model-9000')).toThrow(/unknown/i);
+  it('returns RigRunner for any model string', () => {
+    expect(selectRunner('mystery-model-9000')).toBeInstanceOf(RigRunner);
   });
 });
