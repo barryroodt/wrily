@@ -78,6 +78,10 @@ The bridge is configured for **model-turn mode**: return assistant text + `tool_
 
 **Rejected:** wiring `OpenAiProvider` to `CURSOR_BRIDGE_URL/v1/chat/completions` — unofficial proxy surface, agent-mode semantics, and non-deterministic tool ownership.
 
+### Trust boundary
+
+The Cursor bridge is considered an untrusted external process from Wrily's perspective; it receives `cwd` for context but Wrily makes no assumption that the bridge respects workdir isolation. All tool execution and tool output validation remain in `wrily-rig`.
+
 ### 4. Streaming normalization (`ProviderResponse`)
 
 Consume bridge/SSE events aligned with the [Cloud Agents run stream](https://cursor.com/docs/cloud-agent/api/endpoints#stream-a-run) and [SDK `SDKMessage`](https://cursor.com/docs/sdk/typescript#stream-events) shapes. Map into the internal `ProviderResponse` used by `AgentCore`:

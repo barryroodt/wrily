@@ -59,7 +59,7 @@ Starts one reviewer subagent as a concurrent tokio task. Replaces `TeamCreate` +
 
 | Field | Type | Required | Semantics |
 |-------|------|----------|-----------|
-| `name` | string | yes | Stable reviewer id used in `collect_findings` and dedupe. Must match TS naming: `correctness`, `spec-compliance`, `{dir}-conventions`, `contracts`, optional `{lang}-specialist`. |
+| `name` | string | yes | Stable reviewer id used in `collect_findings` and dedupe. Must match TS naming: `correctness`, `spec-compliance`, `{dir}-conventions`, `contracts`, optional `{lang}-specialist`. Validation: `^[A-Za-z0-9_-]+$`, max 64 chars, must be unique within a round. |
 | `role` | string | yes | Selects bundled template under `agent-team-review/templates/{role}.md`. Same values as `template` unless a specialist uses an external skill body via `extra_context`. |
 | `template` | string | yes | Template file stem (without `.md`). Harness loads from bundled skill fallback or `{workdir}/.claude/skills/agent-team-review/templates/{template}.md` if present (ADR-0002 workdir-first). |
 | `diff_scope` | string | yes | `"full"` for cross-cutting reviewers; otherwise a top-level directory prefix (e.g. `services/payments-service/`). Harness injects `git diff {{DIFF_RANGE}} -- <scope>` into the reviewer system prompt. |

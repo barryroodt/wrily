@@ -64,6 +64,8 @@ Each successfully loaded skill emits one NDJSON `skill_loaded` event on stdout (
 
 #### Lazy load (Phase 3.2 — `skill_load` tool)
 
+Lazy `skill_load` never falls back to bundled content, even for the auto-inject set.
+
 Arguments: `{ "name": "<skill-name>" }`
 
 Resolution:
