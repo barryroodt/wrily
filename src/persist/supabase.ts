@@ -23,16 +23,26 @@ async function postWithRetry(
   let lastStatus = 0;
   let lastBody: unknown = null;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      lastStatus = 0;
+      lastBody = err instanceof Error ? err.message : String(err);
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) break;
+      await new Promise((r) => setTimeout(r, jitter(delay)));
+      continue;
+    }
     if (res.ok) {
       const data = res.status === 204 ? null : await res.json().catch(() => null);
       return { ok: true, status: res.status, data };
