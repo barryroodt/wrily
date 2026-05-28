@@ -1,15 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
 use wrily_rig::cli::Cli;
 use wrily_rig::events::{emit_event, ErrorKind, ExitCode, WrilyEvent};
+use wrily_rig::tracing_setup::{init_tracing, install_panic_hook};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_writer(std::io::stderr)
-        .init();
+    init_tracing();
+    install_panic_hook();
 
     let cli = Cli::parse();
 
