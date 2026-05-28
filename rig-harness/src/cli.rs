@@ -76,6 +76,9 @@ pub enum ConfigError {
     #[error("ambiguous provider for model {model}")]
     AmbiguousProvider { model: String },
 
+    #[error("CLI parse error: {0}")]
+    CliParse(String),
+
     #[error("provider {provider:?} does not match model {model}")]
     ProviderModelMismatch { provider: Provider, model: String },
 
@@ -92,7 +95,64 @@ pub enum ConfigError {
     WorkdirNotDirectory(PathBuf),
 }
 
+impl From<clap::Error> for ConfigError {
+    fn from(err: clap::Error) -> Self {
+        ConfigError::CliParse(err.to_string())
+    }
+}
+
+/// Fully validated CLI configuration ready for the harness run loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Validated {
+    pub mode: Mode,
+    pub model: String,
+    pub provider: Provider,
+    pub workdir: PathBuf,
+    pub prompt_file: PathBuf,
+    pub max_tokens: u64,
+    pub timeout_ms: u64,
+}
+
 impl Cli {
+    pub fn parse_and_validate() -> Result<Validated, ConfigError> {
+        Self::try_parse()
+            .map_err(ConfigError::from)
+            .and_then(Self::into_validated)
+    }
+
+    pub fn parse_and_validate_from<I, T>(iter: I) -> Result<Validated, ConfigError>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        Self::try_parse_from(iter)
+            .map_err(ConfigError::from)
+            .and_then(Self::into_validated)
+    }
+
+    fn into_validated(self) -> Result<Validated, ConfigError> {
+        let workdir = self
+            .workdir
+            .canonicalize()
+            .map_err(|_| ConfigError::WorkdirNotFound(self.workdir.clone()))?;
+        if !workdir.is_dir() {
+            return Err(ConfigError::WorkdirNotFound(workdir));
+        }
+        if !self.prompt_file.exists() {
+            return Err(ConfigError::PromptFileMissing(self.prompt_file.clone()));
+        }
+        let provider = self.resolve_provider()?;
+        Ok(Validated {
+            mode: self.mode,
+            model: self.model,
+            provider,
+            workdir,
+            prompt_file: self.prompt_file,
+            max_tokens: self.max_tokens,
+            timeout_ms: self.timeout_ms,
+        })
+    }
+
     pub fn resolve_provider(&self) -> Result<Provider, ConfigError> {
         if let Some(explicit) = &self.provider {
             match infer_provider_from_model(&self.model) {
