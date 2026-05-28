@@ -129,6 +129,15 @@ describe('recordReviewRun', () => {
     await expect(p).resolves.toBeUndefined();
   });
 
+  it('swallows network fetch failures instead of throwing', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+    const p = recordReviewRun(enabledEnv, run, subs);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(p).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
   it('no-ops when env.supabase is null', async () => {
     await recordReviewRun(disabledEnv, run, subs);
     expect(fetchMock).not.toHaveBeenCalled();

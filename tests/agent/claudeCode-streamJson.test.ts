@@ -91,4 +91,43 @@ describe('reassembleAssistantText', () => {
     const stdout = 'not json\n{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}\n';
     expect(reassembleAssistantText(stdout)).toBe('ok');
   });
+
+  it('uses the terminal result event result field when it contains the JSON fence', () => {
+    const fenced = '```json\n{"summary":"from-result","findings":[],"strengths":[]}\n```';
+    const stdout = [
+      '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"working..."}]}}',
+      `{"type":"result","subtype":"success","result":${JSON.stringify(fenced)},"usage":{"input_tokens":1,"output_tokens":2}}`,
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe(fenced);
+  });
+
+  it('prefers lead-agent text over nested teammate assistant chatter', () => {
+    const leadFence = '```json\n{"summary":"lead","findings":[],"strengths":[]}\n```';
+    const stdout = [
+      `{"type":"assistant","parent_tool_use_id":"toolu_sub","message":{"content":[{"type":"text","text":"teammate prose with no fence"}]}}`,
+      `{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":${JSON.stringify(leadFence)}}]}}`,
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe(leadFence);
+  });
+
+  it('extracts a JSON fence from extended-thinking blocks when text blocks omit it', () => {
+    const fenced = '```json\n{"summary":"from-thinking","findings":[],"strengths":[]}\n```';
+    const stdout = [
+      `{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"thinking","thinking":${JSON.stringify(fenced)}}]}}`,
+      '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"Done."}]}}',
+      '{"type":"result","subtype":"success","result":"","usage":{"input_tokens":0,"output_tokens":0}}',
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe(`${fenced}Done.`);
+  });
+
+  it('reassembles stream_event text_delta chunks when assistant events are absent', () => {
+    const stdout = [
+      '{"type":"stream_event","event":{"delta":{"type":"text_delta","text":"```json\\n"}}}',
+      '{"type":"stream_event","event":{"delta":{"type":"text_delta","text":"{\\"summary\\":\\"stream\\",\\"findings\\":[],\\"strengths\\":[]}\\n```"}}}',
+      '{"type":"result","subtype":"success","result":"","usage":{"input_tokens":0,"output_tokens":0}}',
+    ].join('\n');
+    expect(reassembleAssistantText(stdout)).toBe(
+      '```json\n{"summary":"stream","findings":[],"strengths":[]}\n```',
+    );
+  });
 });

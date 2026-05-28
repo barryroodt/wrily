@@ -83,7 +83,15 @@ export class ExtractError extends Error {
   }
 }
 
-const FENCE_RE = /```json\s*\n([\s\S]*?)\n```/;
+const FENCE_RE = /```json\s*\n([\s\S]*?)```/gi;
+
+function extractJsonFenceBodies(modelReply: string): string[] {
+  const bodies: string[] = [];
+  for (const match of modelReply.matchAll(FENCE_RE)) {
+    if (match[1]) bodies.push(match[1]);
+  }
+  return bodies;
+}
 
 // Fallback for when the model emits prose instead of JSON-in-fence and the
 // prose plainly says "delta clean" / "no findings". We synthesize an empty
@@ -100,8 +108,8 @@ export function extractFindings(
   modelReply: string,
   opts: { reviewType?: ReviewType } = {},
 ): Review {
-  const match = modelReply.match(FENCE_RE);
-  if (!match || !match[1]) {
+  const fenceBodies = extractJsonFenceBodies(modelReply);
+  if (fenceBodies.length === 0) {
     if (opts.reviewType === 'delta' && DELTA_CLEAN_RE.test(modelReply)) {
       const summary = modelReply.trim().split('\n')[0]?.slice(0, 280) ?? 'Delta clean.';
       return { summary, findings: [], strengths: [] };
@@ -109,20 +117,27 @@ export function extractFindings(
     throw new ExtractError('No ```json fence found in model reply', truncateRaw(modelReply));
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[1]);
-  } catch (err) {
-    throw new ExtractError(
-      `Malformed JSON in fence: ${(err as Error).message}`,
-      truncateRaw(match[1]),
+  let lastError: ExtractError | null = null;
+  for (let i = fenceBodies.length - 1; i >= 0; i--) {
+    const body = fenceBodies[i]!;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch (err) {
+      lastError = new ExtractError(
+        `Malformed JSON in fence: ${(err as Error).message}`,
+        truncateRaw(body),
+      );
+      continue;
+    }
+
+    const result = reviewSchema.safeParse(parsed);
+    if (result.success) return result.data;
+    lastError = new ExtractError(
+      `Schema violation: ${result.error.message}`,
+      truncateRaw(body),
     );
   }
 
-  const result = reviewSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new ExtractError(`Schema violation: ${result.error.message}`, truncateRaw(match[1]));
-  }
-
-  return result.data;
+  throw lastError ?? new ExtractError('No valid ```json fence found in model reply', truncateRaw(modelReply));
 }

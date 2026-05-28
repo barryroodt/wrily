@@ -174,4 +174,18 @@ describe('extractFindings', () => {
       expect((err as ExtractError).raw).toMatch(/…\[truncated 3000B\]$/);
     }
   });
+
+  it('uses the last valid JSON fence when earlier fences are prompt examples', () => {
+    const example = '\n```json\n{ "summary": "example only", "findings": [{ "action": "wat" }], "strengths": [] }\n```\n';
+    const actual = '\n```json\n{ "summary": "final", "findings": [], "strengths": [] }\n```\n';
+    const result = extractFindings(`${example}${actual}`);
+    expect(result.summary).toBe('final');
+    expect(result.findings).toEqual([]);
+  });
+
+  it('accepts a fence without a newline before the closing backticks', () => {
+    const reply = '```json\n{"summary":"x","findings":[],"strengths":[]}\n```';
+    const result = extractFindings(reply);
+    expect(result.summary).toBe('x');
+  });
 });
