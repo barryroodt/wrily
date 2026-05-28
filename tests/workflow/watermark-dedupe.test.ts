@@ -95,7 +95,7 @@ describe('workflow / watermark dedupe', () => {
     const fakeGraphql = { graphql: async () => emptyDigestPage };
 
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: buildInitialState() });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -133,7 +133,7 @@ describe('workflow / watermark dedupe', () => {
     const fakeGraphql = { graphql: async () => emptyDigestPage };
 
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: buildInitialState() });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -164,7 +164,7 @@ describe('workflow / watermark dedupe', () => {
     const fakeGraphql = { graphql: async () => emptyDigestPage };
 
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: buildInitialState() });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -194,7 +194,7 @@ describe('workflow / watermark dedupe', () => {
     const fakeGraphql = { graphql: async () => emptyDigestPage };
 
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: buildInitialState({ scopeOverride: 'full' }) });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -221,7 +221,7 @@ describe('workflow / watermark dedupe', () => {
     const fakeGraphql = { graphql: async () => emptyDigestPage };
 
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: buildInitialState({ dryRun: true }) });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);

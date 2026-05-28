@@ -73,7 +73,7 @@ describe('workflow / 422 per-comment fallback', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);

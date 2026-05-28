@@ -89,7 +89,7 @@ async function runWorkflow(
     octokit,
     graphqlClient: { graphql: async () => emptyDigestPage },
   });
-  const result = await workflow.createRun().start({ inputData: initial });
+  const result = await (await workflow.createRun()).start({ inputData: initial });
   if (result.status !== 'success') {
     throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
   }

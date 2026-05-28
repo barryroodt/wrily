@@ -34,7 +34,7 @@ describe('workflow / digest fetch noop when reply_feedback: off', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
     const final = result.result as unknown as WorkflowState;
