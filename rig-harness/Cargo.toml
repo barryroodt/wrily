@@ -7,6 +7,10 @@ name = "wrily-rig"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "wrily_rig"
+path = "src/lib.rs"
+
 [[bin]]
 name = "wrily-rig"
 path = "src/main.rs"
