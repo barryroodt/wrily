@@ -12,7 +12,7 @@ vi.mock('node:child_process', () => ({
 import {
   AgentBudgetExceededError,
   AgentTimeoutError,
-} from '../../src/agent/claudeCode.js';
+} from '../../src/agent/errors.js';
 import { RigRunner } from '../../src/agent/rig.js';
 
 function fakeChild() {

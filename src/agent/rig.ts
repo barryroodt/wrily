@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   AgentBudgetExceededError,
   AgentTimeoutError,
-} from './claudeCode.js';
+} from './errors.js';
 import type { AgentResult, AgentRunOptions, AgentRunner, AgentTokenUsage } from './runner.js';
 
 type WrilyEvent =
