@@ -1,18 +1,29 @@
 {
   "version": 1,
-  "description": "Per-fixture token and duration baselines for diff policy (populated in Phase 7.7)",
+  "policy": {
+    "tokens_drift_pct": 15,
+    "duration_drift_pct": 25
+  },
   "fixtures": {
-    "sample-fixture": {
-      "total_input": 1200,
-      "total_output": 800,
-      "duration_ms": 15000,
-      "tolerance_pct": 10
+    "001-sql-injection": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_ms": 0
     },
-    "minimal-review": {
-      "total_input": 500,
-      "total_output": 200,
-      "duration_ms": 5000,
-      "tolerance_pct": 15
+    "002-delta-clean": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_ms": 0
+    },
+    "003-team-mode-multi-dir": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_ms": 0
+    },
+    "004-budget-trip": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_ms": 0
     }
   }
 }
