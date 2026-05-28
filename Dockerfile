@@ -1,5 +1,30 @@
 # Multi-stage build for Wrily.
 
+FROM alpine:3.20 AS rig-fetch
+ARG TARGETARCH
+RUN apk add --no-cache curl ca-certificates jq
+ARG RIG_RELEASE=latest
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) RIG_TARGET=x86_64-unknown-linux-gnu ;; \
+      arm64) RIG_TARGET=aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported arch: $TARGETARCH"; exit 1 ;; \
+    esac; \
+    if [ "$RIG_RELEASE" = "latest" ]; then \
+      RIG_TAG="$(curl -sSL "https://api.github.com/repos/barryroodt/wrily/releases" \
+        | jq -r '[.[] | select(.tag_name | startswith("wrily-rig-"))][0].tag_name')"; \
+      [ -n "$RIG_TAG" ] && [ "$RIG_TAG" != "null" ] || { echo "no wrily-rig-* release found"; exit 1; }; \
+    else \
+      RIG_TAG="$RIG_RELEASE"; \
+    fi; \
+    ASSET="wrily-rig-${RIG_TARGET}"; \
+    BASE="https://github.com/barryroodt/wrily/releases/download/${RIG_TAG}/${ASSET}"; \
+    curl -sSL -o "/tmp/${ASSET}" "${BASE}"; \
+    curl -sSL -o "/tmp/${ASSET}.sha256" "${BASE}.sha256"; \
+    ( cd /tmp && sha256sum -c "${ASSET}.sha256" ); \
+    chmod +x "/tmp/${ASSET}"; \
+    mv "/tmp/${ASSET}" /wrily-rig
+
 FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
 
 WORKDIR /build
@@ -18,6 +43,8 @@ FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc36
 
 # System deps: git for diff/clone, jq for ad-hoc JSON ops, gh for fixture
 # clone helpers, ca-certificates+curl for the gh apt key fetch.
+COPY --from=rig-fetch /wrily-rig /usr/local/bin/wrily-rig
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git jq gettext-base ca-certificates curl bash \
   && rm -rf /var/lib/apt/lists/*
