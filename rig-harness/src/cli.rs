@@ -63,6 +63,14 @@ impl Provider {
     }
 }
 
+const PROVIDER_PREFIXES: &[(&str, Provider)] = &[
+    ("cursor-composer-", Provider::Cursor),
+    ("composer-", Provider::Cursor),
+    ("claude-", Provider::Anthropic),
+    ("gpt-", Provider::OpenAi),
+    ("gemini-", Provider::Gemini),
+];
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ConfigError {
     #[error("ambiguous provider for model {model}")]
@@ -98,24 +106,19 @@ impl Cli {
 }
 
 fn infer_provider_from_model(model: &str) -> Result<Provider, ConfigError> {
-    if model.starts_with("claude-") {
-        return Ok(Provider::Anthropic);
+    if let Some((_, prov)) = PROVIDER_PREFIXES
+        .iter()
+        .find(|(p, _)| model.starts_with(p))
+    {
+        return Ok(prov.clone());
     }
-    if model.starts_with("gpt-") {
-        return Ok(Provider::OpenAi);
+    if let Some(rest) = model.strip_prefix('o') {
+        if rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return Ok(Provider::OpenAi);
+        }
     }
-    if model.starts_with("gemini-") {
-        return Ok(Provider::Gemini);
-    }
-    if model.starts_with("cursor-") || model.starts_with("composer-") {
-        return Ok(Provider::Cursor);
-    }
-    if model.starts_with('o') {
-        return Ok(Provider::OpenAi);
-    }
-
     Err(ConfigError::AmbiguousProvider {
-        model: model.to_string(),
+        model: model.into(),
     })
 }
 
