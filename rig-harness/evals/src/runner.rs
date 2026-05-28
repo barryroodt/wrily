@@ -1,10 +1,12 @@
-use crate::{run_all, AssertionFailure, Expected};
-use anyhow::Result;
+use crate::{cost_usd, emit_spend_summary, run_all, AssertionFailure, Expected, SPEND_CAP_USD};
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::task::JoinSet;
+
+const DEFAULT_EVAL_MODEL: &str = "claude-haiku-4-5-20251001";
 
 pub struct FixtureRunner {
     pub binary_path: PathBuf,
@@ -20,6 +22,7 @@ pub struct FixtureResult {
     pub total_input: u64,
     pub total_output: u64,
     pub duration_ms: u64,
+    pub cost_usd: f64,
 }
 
 impl FixtureRunner {
@@ -37,6 +40,7 @@ impl FixtureRunner {
         let mut iter = entries.into_iter();
         let mut in_flight = 0usize;
         let mut results = Vec::new();
+        let mut cumulative_spend = 0.0_f64;
 
         loop {
             while in_flight < max {
@@ -53,9 +57,25 @@ impl FixtureRunner {
             }
             if let Some(res) = joinset.join_next().await {
                 in_flight -= 1;
-                results.push(res??);
+                let fixture_result = res??;
+                cumulative_spend += fixture_result.cost_usd;
+                results.push(fixture_result);
+
+                if cumulative_spend > SPEND_CAP_USD {
+                    joinset.abort_all();
+                    while joinset.join_next().await.is_some() {}
+                    emit_spend_summary(cumulative_spend, SPEND_CAP_USD, true);
+                    eprintln!(
+                        "::error::eval spend cap exceeded: ${cumulative_spend:.4} > ${SPEND_CAP_USD:.2}"
+                    );
+                    bail!(
+                        "eval spend cap exceeded: ${cumulative_spend:.4} > ${SPEND_CAP_USD:.2}"
+                    );
+                }
             }
         }
+
+        emit_spend_summary(cumulative_spend, SPEND_CAP_USD, false);
         Ok(results)
     }
 }
@@ -86,7 +106,7 @@ async fn run_fixture(binary: &Path, dir: &Path) -> Result<FixtureResult> {
             "--mode",
             "single",
             "--model",
-            "claude-haiku-4-5-20251001",
+            DEFAULT_EVAL_MODEL,
             "--workdir",
             &tmpdir.path().display().to_string(),
             "--prompt-file",
@@ -121,6 +141,8 @@ async fn run_fixture(binary: &Path, dir: &Path) -> Result<FixtureResult> {
         })
         .unwrap_or((0, 0));
 
+    let fixture_cost = cost_usd(DEFAULT_EVAL_MODEL, totals.0, totals.1);
+
     Ok(FixtureResult {
         fixture: name,
         passed: failures.is_empty(),
@@ -128,6 +150,7 @@ async fn run_fixture(binary: &Path, dir: &Path) -> Result<FixtureResult> {
         total_input: totals.0,
         total_output: totals.1,
         duration_ms,
+        cost_usd: fixture_cost,
     })
 }
 
