@@ -40,11 +40,17 @@ pub enum ExitCode {
     Error,
 }
 
+/// How a skill was resolved for [`WrilyEvent::SkillLoaded`].
+///
+/// `workdir` / `bundled` — auto-inject resolution (ADR-0002).
+/// `auto` / `lazy` — legacy placeholders kept for roundtrip compat.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillSource {
     Auto,
     Lazy,
+    Workdir,
+    Bundled,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
