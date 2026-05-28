@@ -1,0 +1,11 @@
+{
+  "fixture": "002-delta-clean",
+  "exit": "ok",
+  "min_findings": null,
+  "max_findings": 0,
+  "must_contain_phrases": [],
+  "must_not_contain_phrases": ["issue"],
+  "max_input_tokens": null,
+  "max_output_tokens": null,
+  "max_duration_ms": null
+}
