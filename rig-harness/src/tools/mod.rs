@@ -5,6 +5,7 @@ pub mod read_file;
 pub mod registry;
 pub mod shell;
 pub mod skill_load;
+pub mod subagent;
 pub mod truncate;
 
 pub use registry::ToolRegistry;

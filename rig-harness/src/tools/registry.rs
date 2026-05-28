@@ -1,22 +1,51 @@
 use super::{
-    find_files, git_diff, list_files, read_file, shell, skill_load, ToolError, ToolOutput,
+    find_files, git_diff, list_files, read_file, shell, skill_load, subagent, ToolError, ToolOutput,
 };
 use crate::events::{WrilyEvent, now_ms, truncate_args};
-use crate::provider::ToolSchema;
+use crate::provider::{ProviderAdapter, ToolSchema};
 use std::path::PathBuf;
+use std::sync::{Arc, Weak};
+
+struct TeamTools {
+    roster: Arc<subagent::ReviewerRoster>,
+    provider: Arc<dyn ProviderAdapter>,
+    reviewer_system_template: String,
+    registry: Weak<ToolRegistry>,
+}
 
 /// Native tool dispatcher. Owns workdir + emits `tool_call` / `tool_result` pairs around each call.
 pub struct ToolRegistry {
     workdir: PathBuf,
+    team: Option<TeamTools>,
 }
 
 impl ToolRegistry {
     pub fn new(workdir: PathBuf) -> Self {
-        Self { workdir }
+        Self {
+            workdir,
+            team: None,
+        }
     }
 
-    /// JSON schemas to send to the provider as available tools.
-    pub fn schemas(&self) -> Vec<ToolSchema> {
+    /// Team-mode registry: standard tools plus coordinator-only subagent tools.
+    pub fn team(
+        workdir: PathBuf,
+        roster: Arc<subagent::ReviewerRoster>,
+        provider: Arc<dyn ProviderAdapter>,
+        reviewer_system_template: String,
+    ) -> Arc<Self> {
+        Arc::new_cyclic(|weak| Self {
+            workdir,
+            team: Some(TeamTools {
+                roster,
+                provider,
+                reviewer_system_template,
+                registry: weak.clone(),
+            }),
+        })
+    }
+
+    fn base_schemas() -> Vec<ToolSchema> {
         vec![
             ToolSchema {
                 name: "read_file".into(),
@@ -49,6 +78,56 @@ impl ToolRegistry {
                 json_schema: serde_json::json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}),
             },
         ]
+    }
+
+    fn team_schemas() -> Vec<ToolSchema> {
+        vec![
+            ToolSchema {
+                name: "spawn_reviewer".into(),
+                description: "Start one reviewer subagent as a concurrent task.".into(),
+                json_schema: serde_json::json!({
+                    "type":"object",
+                    "properties":{
+                        "name":{"type":"string"},
+                        "role":{"type":"string"},
+                        "template":{"type":"string"},
+                        "diff_scope":{"type":"string"},
+                        "extra_context":{"type":"string"}
+                    },
+                    "required":["name","role","template","diff_scope"]
+                }),
+            },
+            ToolSchema {
+                name: "collect_findings".into(),
+                description: "Collect markdown reports from spawned reviewers.".into(),
+                json_schema: serde_json::json!({
+                    "type":"object",
+                    "properties":{"round":{"type":"integer"}},
+                    "required":["round"]
+                }),
+            },
+            ToolSchema {
+                name: "broadcast_summary".into(),
+                description: "Deliver a cross-review digest to all reviewers for refinement.".into(),
+                json_schema: serde_json::json!({
+                    "type":"object",
+                    "properties":{
+                        "round":{"type":"integer"},
+                        "summary":{"type":"string"}
+                    },
+                    "required":["round","summary"]
+                }),
+            },
+        ]
+    }
+
+    /// JSON schemas to send to the provider as available tools.
+    pub fn schemas(&self) -> Vec<ToolSchema> {
+        let mut schemas = Self::base_schemas();
+        if self.team.is_some() {
+            schemas.extend(Self::team_schemas());
+        }
+        schemas
     }
 
     /// Dispatch one tool call. Emits `tool_call` and `tool_result` NDJSON events around execution.
@@ -100,6 +179,21 @@ impl ToolRegistry {
         output
     }
 
+    fn team_tools(&self) -> Result<&TeamTools, ToolError> {
+        self.team
+            .as_ref()
+            .ok_or_else(|| ToolError::UnknownTool("team tools unavailable in single mode".into()))
+    }
+
+    fn tool_output(content: String) -> ToolOutput {
+        let bytes = content.len();
+        ToolOutput {
+            content,
+            bytes,
+            truncated: false,
+        }
+    }
+
     async fn dispatch_inner(&self, name: &str, args_json: &str) -> Result<ToolOutput, ToolError> {
         match name {
             "read_file" => {
@@ -131,6 +225,47 @@ impl ToolRegistry {
                 let args: skill_load::SkillLoadArgs = serde_json::from_str(args_json)
                     .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
                 skill_load::skill_load(&self.workdir, args).await
+            }
+            "spawn_reviewer" => {
+                let team = self.team_tools()?;
+                let args: subagent::SpawnReviewerArgs = serde_json::from_str(args_json)
+                    .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
+                let registry = team.registry.upgrade().ok_or_else(|| {
+                    ToolError::InvalidInput("team registry unavailable".into())
+                })?;
+                let content = team
+                    .roster
+                    .spawn_reviewer(
+                        args,
+                        team.provider.clone(),
+                        registry,
+                        team.reviewer_system_template.clone(),
+                    )
+                    .await
+                    .map_err(ToolError::InvalidInput)?;
+                Ok(Self::tool_output(content))
+            }
+            "collect_findings" => {
+                let team = self.team_tools()?;
+                let args: subagent::CollectFindingsArgs = serde_json::from_str(args_json)
+                    .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
+                let content = team
+                    .roster
+                    .collect_findings(args)
+                    .await
+                    .map_err(ToolError::InvalidInput)?;
+                Ok(Self::tool_output(content))
+            }
+            "broadcast_summary" => {
+                let team = self.team_tools()?;
+                let args: subagent::BroadcastSummaryArgs = serde_json::from_str(args_json)
+                    .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
+                let content = team
+                    .roster
+                    .broadcast_summary(args)
+                    .await
+                    .map_err(ToolError::InvalidInput)?;
+                Ok(Self::tool_output(content))
             }
             other => Err(ToolError::UnknownTool(other.into())),
         }
