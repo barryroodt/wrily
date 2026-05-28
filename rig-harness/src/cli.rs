@@ -156,12 +156,10 @@ impl Cli {
     pub fn resolve_provider(&self) -> Result<Provider, ConfigError> {
         if let Some(explicit) = &self.provider {
             match infer_provider_from_model(&self.model) {
-                Ok(inferred) if inferred != *explicit => {
-                    Err(ConfigError::ProviderModelMismatch {
-                        provider: explicit.clone(),
-                        model: self.model.clone(),
-                    })
-                }
+                Ok(inferred) if inferred != *explicit => Err(ConfigError::ProviderModelMismatch {
+                    provider: explicit.clone(),
+                    model: self.model.clone(),
+                }),
                 Ok(_) | Err(ConfigError::AmbiguousProvider { .. }) => Ok(explicit.clone()),
                 Err(e) => Err(e),
             }
@@ -178,10 +176,7 @@ impl Cli {
 }
 
 fn infer_provider_from_model(model: &str) -> Result<Provider, ConfigError> {
-    if let Some((_, prov)) = PROVIDER_PREFIXES
-        .iter()
-        .find(|(p, _)| model.starts_with(p))
-    {
+    if let Some((_, prov)) = PROVIDER_PREFIXES.iter().find(|(p, _)| model.starts_with(p)) {
         return Ok(prov.clone());
     }
     if let Some(rest) = model.strip_prefix('o') {
@@ -209,10 +204,14 @@ fn validate_prompt_file(prompt_file: &Path) -> Result<(), ConfigError> {
         return Err(ConfigError::PromptFileMissing(prompt_file.to_path_buf()));
     }
     if !prompt_file.is_file() {
-        return Err(ConfigError::PromptFileNotReadable(prompt_file.to_path_buf()));
+        return Err(ConfigError::PromptFileNotReadable(
+            prompt_file.to_path_buf(),
+        ));
     }
     if std::fs::File::open(prompt_file).is_err() {
-        return Err(ConfigError::PromptFileNotReadable(prompt_file.to_path_buf()));
+        return Err(ConfigError::PromptFileNotReadable(
+            prompt_file.to_path_buf(),
+        ));
     }
     Ok(())
 }

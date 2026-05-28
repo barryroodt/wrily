@@ -1,6 +1,6 @@
 use wrily_rig::{
     cli::Cli,
-    events::{ErrorKind, ExitCode, WrilyEvent, now_ms},
+    events::{now_ms, ErrorKind, ExitCode, WrilyEvent},
     tracing_setup::{init_tracing, install_panic_hook},
 };
 

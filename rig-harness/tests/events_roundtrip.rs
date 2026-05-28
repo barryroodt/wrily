@@ -153,7 +153,10 @@ fn truncate_args_ascii_at_limit() {
 
 #[test]
 fn truncate_args_ascii_over_limit() {
-    assert_eq!(truncate_args("hello world", 5), format!("hello{TRUNCATE_MARKER}"));
+    assert_eq!(
+        truncate_args("hello world", 5),
+        format!("hello{TRUNCATE_MARKER}")
+    );
 }
 
 #[test]

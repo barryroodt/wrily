@@ -2,7 +2,7 @@ use std::io::{self, IsTerminal};
 
 use tracing_subscriber::EnvFilter;
 
-use crate::events::{ErrorKind, ExitCode, WrilyEvent, now_ms};
+use crate::events::{now_ms, ErrorKind, ExitCode, WrilyEvent};
 
 pub fn init_tracing() {
     tracing_subscriber::fmt()

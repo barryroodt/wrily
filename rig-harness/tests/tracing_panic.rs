@@ -35,13 +35,20 @@ fn stderr_gets_tracing_stdout_stays_ndjson_only() {
     assert!(!lines.is_empty(), "stdout should contain NDJSON events");
 
     for line in &lines {
-        serde_json::from_str::<serde_json::Value>(line)
-            .unwrap_or_else(|err| panic!("stdout must be NDJSON-only, invalid line {line:?}: {err}"));
+        serde_json::from_str::<serde_json::Value>(line).unwrap_or_else(|err| {
+            panic!("stdout must be NDJSON-only, invalid line {line:?}: {err}")
+        });
     }
 
     let last: WrilyEvent = serde_json::from_str(lines.last().expect("result line")).expect("parse");
     assert!(
-        matches!(last, WrilyEvent::Result { exit: ExitCode::Config, .. }),
+        matches!(
+            last,
+            WrilyEvent::Result {
+                exit: ExitCode::Config,
+                ..
+            }
+        ),
         "stdout must end with a config result event"
     );
 }
@@ -86,14 +93,26 @@ fn panic_hook_emits_ndjson_on_subprocess_panic() {
     let error: WrilyEvent =
         serde_json::from_str(lines[lines.len() - 2]).expect("parse penultimate error event");
     assert!(
-        matches!(error, WrilyEvent::Error { kind: ErrorKind::Internal, .. }),
+        matches!(
+            error,
+            WrilyEvent::Error {
+                kind: ErrorKind::Internal,
+                ..
+            }
+        ),
         "penultimate stdout line must be an internal error event"
     );
 
     let result: WrilyEvent =
         serde_json::from_str(lines.last().expect("result line")).expect("parse result event");
     assert!(
-        matches!(result, WrilyEvent::Result { exit: ExitCode::Error, .. }),
+        matches!(
+            result,
+            WrilyEvent::Result {
+                exit: ExitCode::Error,
+                ..
+            }
+        ),
         "last stdout line must be an error result event"
     );
 }

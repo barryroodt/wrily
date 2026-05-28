@@ -81,10 +81,7 @@ fn provider_inference_cursor_prefixes() {
     let workdir = temp_workdir("cursor");
     let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
 
-    for model in [
-        "composer-2.5-fast",
-        "cursor-composer-2.5-fast",
-    ] {
+    for model in ["composer-2.5-fast", "cursor-composer-2.5-fast"] {
         let cli = Cli {
             model: model.into(),
             ..base_cli(&workdir, &prompt)
