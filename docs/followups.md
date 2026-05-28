@@ -16,14 +16,28 @@ Running list of things we know we want to do, captured across sessions so they d
 - SBOM + provenance attestation via `actions/attest-build-provenance`.
 - Pin Dockerfile base image by digest (`node:22-slim@sha256:…`) instead of by tag, so Dependabot tracks digest moves.
 
-## Mastra upgrade (was PR #10)
+## Package updates (Dependabot backlog)
 
-- `@mastra/core` 0.10 → 0.24 is a 14-minor jump on a 0.x package — effectively a breaking change. Path:
-  1. Read Mastra changelog `0.10 → 0.24`.
-  2. Adapt `src/workflow/` step definitions if the `createStep` / `createWorkflow` API surface changed.
-  3. Re-run full vitest suite.
-  4. Open as a standalone PR; don't bundle with other changes.
-- Other PRs we closed (#2 node 26, #11 yaml duplicate of #10) — node 22 LTS is fine for now; yaml will roll in with the Mastra upgrade.
+Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped `prod-minor-patch` bump; smoke CI passed but `pnpm test` failed 43/272 on the Mastra jump. Split the work below; don't re-bundle.
+
+### Safe to land separately (were bundled in #19)
+
+- `@octokit/graphql` 8.1.1 → 8.2.2 — patch/minor; no code changes expected.
+- `@octokit/rest` 21.0.2 → 21.1.1 — includes ReDoS mitigation in Octokit deps.
+- `yaml` 2.5.1 → 2.9.0 — parser hardening + bugfixes; no API change for our usage.
+
+### Already merged (May 2026 Dependabot triage)
+
+- ✅ `protobufjs` 7.5.6 → 7.6.0 ([#21](https://github.com/barryroodt/wrily/pull/21))
+- ✅ `docker/login-action` 4.1.0 → 4.2.0 ([#22](https://github.com/barryroodt/wrily/pull/22))
+- ✅ `docker/build-push-action` 7.1.0 → 7.2.0 ([#23](https://github.com/barryroodt/wrily/pull/23))
+- ✅ `docker/metadata-action` 5.10.0 → 6.1.0 ([#24](https://github.com/barryroodt/wrily/pull/24))
+- ✅ Cloudflare worker dev deps: `workers-types`, `vitest` 4.1.6→4.1.7, `wrangler` 4.92→4.94 ([#25](https://github.com/barryroodt/wrily/pull/25))
+
+### Deferred elsewhere
+
+- Node 26 (#2) — node 22 LTS is fine for now.
+- Consider excluding `@mastra/core` from the Dependabot `prod-minor-patch` group so future bumps don't reopen a bundled PR.
 
 ## Self-hosting polish
 
@@ -65,4 +79,6 @@ Running list of things we know we want to do, captured across sessions so they d
 - ✅ Workflow permissions tightened (top-level `contents: read`; reusable workflow `permissions: {}`).
 - ✅ CodeQL default setup, private vulnerability reporting, secret scanning, Dependabot security updates all enabled.
 - ✅ First Dependabot batch triaged: vitest CVE patch, hono CVE patch, actions/docker majors merged; node 26 + Mastra major bump closed for later.
+- ✅ May 2026 Dependabot triage: merged #21–#25 (protobufjs, docker actions, worker dev deps); closed #19 (Mastra + octokit/yaml bundle) — octokit/yaml/Mastra tracked above.
 - ✅ Self-hosting guide drafted; README reframed around BYO deployment.
+- ✅ `@mastra/core` 0.10.0 → 1.37.1 (Mastra moved past 0.x while we deferred — jumped directly to 1.37.1). API note: `createRunAsync()` doesn't exist — `createRun()` itself is async and returns `Promise<Run>`, so all 35 call sites became `await workflow.createRun()`. `createStep` / `createWorkflow` signatures compatible as-is.
