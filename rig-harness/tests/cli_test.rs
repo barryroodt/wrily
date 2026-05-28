@@ -98,6 +98,115 @@ fn provider_inference_cursor_prefixes() {
 }
 
 #[test]
+fn provider_inference_rejects_non_o_series() {
+    let workdir = temp_workdir("non-o-series");
+    let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
+    let cli = Cli {
+        model: "olmo-7b".into(),
+        ..base_cli(&workdir, &prompt)
+    };
+
+    assert_eq!(
+        cli.resolve_provider(),
+        Err(ConfigError::AmbiguousProvider {
+            model: "olmo-7b".into(),
+        })
+    );
+}
+
+#[test]
+fn provider_inference_drops_bare_cursor_prefix() {
+    let workdir = temp_workdir("bare-cursor");
+    let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
+    let cli = Cli {
+        model: "cursor-fast".into(),
+        ..base_cli(&workdir, &prompt)
+    };
+
+    assert_eq!(
+        cli.resolve_provider(),
+        Err(ConfigError::AmbiguousProvider {
+            model: "cursor-fast".into(),
+        })
+    );
+}
+
+#[test]
+fn resolve_provider_rejects_mismatch() {
+    let workdir = temp_workdir("mismatch");
+    let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
+    let cli = Cli {
+        model: "composer-2.5-fast".into(),
+        provider: Some(Provider::OpenAi),
+        ..base_cli(&workdir, &prompt)
+    };
+
+    assert_eq!(
+        cli.resolve_provider(),
+        Err(ConfigError::ProviderModelMismatch {
+            provider: Provider::OpenAi,
+            model: "composer-2.5-fast".into(),
+        })
+    );
+}
+
+#[test]
+fn parse_and_validate_canonicalises_workdir() {
+    let dir = temp_workdir("canonical");
+    let prompt = write_prompt_file(&dir, "prompt.txt", "hello");
+    let sub = dir.join("sub");
+    fs::create_dir_all(&sub).expect("create subdir");
+    let workdir_arg = sub.join("..");
+    let canonical = dir.canonicalize().expect("canonicalize dir");
+
+    let validated = Cli::parse_and_validate_from([
+        "wrily-rig",
+        "--mode",
+        "single",
+        "--model",
+        "claude-sonnet-4",
+        "--workdir",
+        workdir_arg.to_str().unwrap(),
+        "--prompt-file",
+        prompt.to_str().unwrap(),
+        "--max-tokens",
+        "8192",
+        "--timeout-ms",
+        "60000",
+    ])
+    .expect("parse_and_validate");
+
+    assert_eq!(validated.workdir, canonical);
+}
+
+#[test]
+fn parse_and_validate_returns_resolved_provider() {
+    let workdir = temp_workdir("resolved-provider");
+    let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
+    let prompt_str = prompt.to_str().unwrap();
+
+    let validated = Cli::parse_and_validate_from([
+        "wrily-rig",
+        "--mode",
+        "single",
+        "--model",
+        "gpt-4o",
+        "--workdir",
+        workdir.to_str().unwrap(),
+        "--prompt-file",
+        prompt_str,
+        "--max-tokens",
+        "8192",
+        "--timeout-ms",
+        "60000",
+    ])
+    .expect("parse_and_validate");
+
+    assert_eq!(validated.provider, Provider::OpenAi);
+    assert_eq!(validated.model, "gpt-4o");
+}
+
+#[test]
 fn ambiguous_model_returns_error() {
     let workdir = temp_workdir("ambiguous");
     let prompt = write_prompt_file(&workdir, "prompt.txt", "hello");
