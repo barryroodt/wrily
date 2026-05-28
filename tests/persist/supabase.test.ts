@@ -6,7 +6,7 @@ import type { ReviewRunRecord, SubagentRecord } from '../../src/persist/types.js
 const baseEnv = {
   authMethod: 'oauth',
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'tok',
+  claudeOauthToken: 'tok',
   githubToken: 't',
   prNumber: 1,
   githubRepository: 'o/r',

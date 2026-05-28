@@ -46,9 +46,10 @@ impl ProviderAdapter for TeamCoordinatorProvider {
         messages: &[ChatMessage],
         _tools: &[ToolSchema],
     ) -> anyhow::Result<ProviderResponse> {
-        if messages.iter().any(|m| {
-            matches!(m, ChatMessage::User(text) if text.starts_with("Role: "))
-        }) {
+        if messages
+            .iter()
+            .any(|m| matches!(m, ChatMessage::User(text) if text.starts_with("Role: ")))
+        {
             return Ok(ProviderResponse {
                 text: self.reviewer_text.clone(),
                 tool_calls: vec![],
@@ -95,9 +96,10 @@ impl ProviderAdapter for PanicReviewerProvider {
         messages: &[ChatMessage],
         _tools: &[ToolSchema],
     ) -> anyhow::Result<ProviderResponse> {
-        if messages.iter().any(|m| {
-            matches!(m, ChatMessage::User(text) if text.starts_with("Role: "))
-        }) {
+        if messages
+            .iter()
+            .any(|m| matches!(m, ChatMessage::User(text) if text.starts_with("Role: ")))
+        {
             panic!("reviewer task panic");
         }
 
@@ -209,11 +211,15 @@ async fn team_mode_completes_ok_with_subagent_events() {
 
     let events = _guard.drain_events();
     assert!(
-        events.iter().any(|e| matches!(e, WrilyEvent::SubagentSpawn { name, .. } if name == "correctness")),
+        events
+            .iter()
+            .any(|e| matches!(e, WrilyEvent::SubagentSpawn { name, .. } if name == "correctness")),
         "expected subagent_spawn, got: {events:?}"
     );
     assert!(
-        events.iter().any(|e| matches!(e, WrilyEvent::SubagentDone { name, .. } if name == "correctness")),
+        events
+            .iter()
+            .any(|e| matches!(e, WrilyEvent::SubagentDone { name, .. } if name == "correctness")),
         "expected subagent_done, got: {events:?}"
     );
     assert!(
@@ -273,7 +279,10 @@ async fn team_mode_all_reviewers_crash_emits_team_collapse() {
     assert!(
         events.iter().any(|e| matches!(
             e,
-            WrilyEvent::Error { kind: ErrorKind::TeamCollapse, .. }
+            WrilyEvent::Error {
+                kind: ErrorKind::TeamCollapse,
+                ..
+            }
         )),
         "expected team_collapse error, got: {events:?}"
     );
@@ -346,7 +355,10 @@ async fn team_mode_budget_trip_during_reviewer_round() {
     .await;
 
     assert_eq!(exit, ExitCode::Budget);
-    assert!(cancel.is_cancelled(), "cancel should propagate on budget trip");
+    assert!(
+        cancel.is_cancelled(),
+        "cancel should propagate on budget trip"
+    );
     assert!(
         _guard
             .drain_events()

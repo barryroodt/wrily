@@ -93,7 +93,7 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   return {
     authMethod,
     anthropicApiKey: authMethod === 'oauth' ? null : (parsed.ANTHROPIC_API_KEY ?? null),
-    claudeCodeOauthToken: authMethod === 'oauth' ? (parsed.CLAUDE_CODE_OAUTH_TOKEN ?? null) : null,
+    claudeOauthToken: authMethod === 'oauth' ? (parsed.CLAUDE_CODE_OAUTH_TOKEN ?? null) : null,
     githubToken: parsed.GITHUB_TOKEN,
     prNumber: Number.parseInt(parsed.PR_NUMBER, 10),
     githubRepository: parsed.GITHUB_REPOSITORY,

@@ -243,7 +243,7 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
         ├── parseEnv()           — Zod-validated runtime env
         ├── parseWrilyYml()     — .wrily.yml config + defaults
         ├── applyEnvOverrides()  — MODE/MODEL/MAX_BUDGET env > .wrily.yml > default
-        ├── selectRunner(cfg.model) — claude-code | codex runner
+        ├── selectRunner(cfg.model) — RigRunner (wrily-rig sidecar)
         └── Mastra workflow (src/workflow/)
               ├── cloneRepo               — git-clone consumer PR into ephemeral /tmp dir; checkout commit SHA
               ├── cloneShared             — best-effort your-org/shared-wrily-skills clone for org context (skips on missing token)
@@ -252,7 +252,7 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
               ├── resolveReview           — SCOPE_OVERRIDE → reviewType; reviewRoundIndex from prior handoff markers;
               │                             delta merge-filter (excludes files merged in from base since last review)
               ├── renderPrompt            — typed prompt template (forbids gh posting, JSON-in-fence only)
-              ├── agentCall               — spawn claude -p; AgentTimeoutError / AgentBudgetExceededError on SIGTERM / budget
+              ├── agentCall               — spawn wrily-rig; AgentTimeoutError / AgentBudgetExceededError on SIGTERM / budget
               ├── extractFindings         — JSON-in-fence → discriminated-union Review (delta-clean prose fallback)
               ├── routeFindings           — new_comment / reply_in_thread / suppress; re-raise unknown threads
               ├── postToGitHub            — watermark dedupe → REST review POST → 422 per-comment fallback; DRY_RUN guards writes
@@ -269,7 +269,7 @@ Source layout under `src/`:
 | `config/` | `RuntimeEnv` + `WrilyConfig` Zod schemas + `applyEnvOverrides` (`env.ts`, `wrilyYml.ts`, `types.ts`) |
 | `prompt/` | Prompt templates + typed renderer + instruction builders |
 | `post/` | Findings extract → route → GitHub REST (review POST + reply-in-thread + thread resolve) + body renderer + failure fallback |
-| `agent/` | `AgentRunner` interface + `ClaudeCodeRunner` (with `AgentTimeoutError`/`AgentBudgetExceededError`) + factory |
+| `agent/` | `AgentRunner` interface + `RigRunner` (with `AgentTimeoutError`/`AgentBudgetExceededError`) + factory |
 | `git/` | Diff range + ignore-pattern + team-threshold scope + `intersectFileLists` + `computeDiffFiles` |
 | `skills/` | `bridgeSkills` helper for copying shared skills |
 | `workflow/` | Mastra `createStep` definitions (cloneRepo → … → resolveAddressedThreads) + `createWorkflow` assembly |

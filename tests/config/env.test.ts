@@ -14,7 +14,7 @@ describe('parseEnv', () => {
   it('parses minimal valid env with OAuth token', () => {
     const env = parseEnv(minimal);
     expect(env.authMethod).toBe('oauth');
-    expect(env.claudeCodeOauthToken).toBe('sk-ant-oat01-xxx');
+    expect(env.claudeOauthToken).toBe('sk-ant-oat01-xxx');
     expect(env.anthropicApiKey).toBeNull();
     expect(env.prNumber).toBe(42);
     expect(env.dryRun).toBe(false);
@@ -37,7 +37,7 @@ describe('parseEnv', () => {
     const env = parseEnv({ ...minimal, CLAUDE_CODE_OAUTH_TOKEN: undefined, ANTHROPIC_API_KEY: 'sk-ant-xxx' });
     expect(env.authMethod).toBe('api_key');
     expect(env.anthropicApiKey).toBe('sk-ant-xxx');
-    expect(env.claudeCodeOauthToken).toBeNull();
+    expect(env.claudeOauthToken).toBeNull();
   });
 
   it('throws when neither OAuth nor API key is set', () => {

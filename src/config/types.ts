@@ -23,7 +23,7 @@ export type WrilyConfig = {
 export type RuntimeEnv = {
   authMethod: 'oauth' | 'api_key';
   anthropicApiKey: string | null;
-  claudeCodeOauthToken: string | null;
+  claudeOauthToken: string | null;
   githubToken: string;
   prNumber: number;
   githubRepository: string;
