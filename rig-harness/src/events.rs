@@ -30,7 +30,7 @@ pub enum ErrorKind {
     Internal,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExitCode {
     Ok,
@@ -38,6 +38,19 @@ pub enum ExitCode {
     Timeout,
     Config,
     Error,
+}
+
+impl ExitCode {
+    /// Map harness exit semantics to the process exit code consumed by the TS runner.
+    pub fn as_process_exit(&self) -> i32 {
+        match self {
+            Self::Ok => 0,
+            Self::Error => 1,
+            Self::Budget => 2,
+            Self::Timeout => 3,
+            Self::Config => 4,
+        }
+    }
 }
 
 /// How a skill was resolved for [`WrilyEvent::SkillLoaded`].

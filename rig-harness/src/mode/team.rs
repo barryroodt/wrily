@@ -1,6 +1,7 @@
 use crate::cli::Validated;
 use crate::events::{now_ms, ErrorKind, ExitCode, WrilyEvent};
 use crate::meter::TokenMeter;
+use crate::mode::ModeRunOutcome;
 use crate::provider::{build_adapter, ChatMessage, ProviderAdapter, ToolResult};
 use crate::skills::SkillLoader;
 use crate::tools::subagent::{CollectFindingsArgs, ReviewerRoster};
@@ -157,10 +158,7 @@ impl TeamMode {
         let Ok(args) = serde_json::from_str::<CollectFindingsArgs>(args_json) else {
             return initial;
         };
-        self.roster
-            .collect_findings(args)
-            .await
-            .unwrap_or(initial)
+        self.roster.collect_findings(args).await.unwrap_or(initial)
     }
 
     fn team_collapsed(&self, collect_output: &str) -> bool {
@@ -168,8 +166,15 @@ impl TeamMode {
     }
 }
 
+fn outcome(exit: ExitCode, meter: &TokenMeter) -> ModeRunOutcome {
+    ModeRunOutcome {
+        exit,
+        meter: meter.snapshot(),
+    }
+}
+
 /// Public entry point used by main.rs.
-pub async fn run_team(validated: Validated) -> ExitCode {
+pub async fn run_team(validated: Validated) -> ModeRunOutcome {
     use crate::cancel::shared_token;
     use crate::cancel::spawn_timeout_watchdog;
 
@@ -177,21 +182,19 @@ pub async fn run_team(validated: Validated) -> ExitCode {
     let meter = Arc::new(TokenMeter::new(validated.max_tokens, cancel.clone()));
     let _watchdog = spawn_timeout_watchdog(cancel.clone(), validated.timeout_ms);
 
-    let provider: Arc<dyn ProviderAdapter> = match build_adapter(
-        validated.provider.clone(),
-        validated.model.clone(),
-    ) {
-        Ok(p) => Arc::from(p),
-        Err(err) => {
-            let _ = WrilyEvent::Error {
-                ts: now_ms(),
-                kind: ErrorKind::Config,
-                message: err.to_string(),
+    let provider: Arc<dyn ProviderAdapter> =
+        match build_adapter(validated.provider.clone(), validated.model.clone()) {
+            Ok(p) => Arc::from(p),
+            Err(err) => {
+                let _ = WrilyEvent::Error {
+                    ts: now_ms(),
+                    kind: ErrorKind::Config,
+                    message: err.to_string(),
+                }
+                .emit();
+                return outcome(ExitCode::Config, &meter);
             }
-            .emit();
-            return ExitCode::Config;
-        }
-    };
+        };
 
     let prompt = match std::fs::read_to_string(&validated.prompt_file) {
         Ok(p) => p,
@@ -202,7 +205,7 @@ pub async fn run_team(validated: Validated) -> ExitCode {
                 message: format!("prompt file: {err}"),
             }
             .emit();
-            return ExitCode::Config;
+            return outcome(ExitCode::Config, &meter);
         }
     };
 
@@ -215,9 +218,9 @@ pub async fn run_team(validated: Validated) -> ExitCode {
     );
     let skill_loader = SkillLoader::new(validated.workdir.clone());
 
-    TeamMode {
+    let exit = TeamMode {
         validated,
-        meter,
+        meter: meter.clone(),
         cancel,
         registry,
         roster,
@@ -227,5 +230,7 @@ pub async fn run_team(validated: Validated) -> ExitCode {
         spawned_reviewers: 0,
     }
     .run()
-    .await
+    .await;
+
+    outcome(exit, &meter)
 }

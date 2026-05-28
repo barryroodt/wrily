@@ -1,6 +1,7 @@
 use crate::cli::Validated;
 use crate::events::{now_ms, ExitCode, WrilyEvent};
 use crate::meter::TokenMeter;
+use crate::mode::ModeRunOutcome;
 use crate::provider::{build_adapter, ChatMessage, ProviderAdapter, ToolResult};
 use crate::skills::SkillLoader;
 use crate::tools::ToolRegistry;
@@ -124,8 +125,15 @@ impl SingleMode {
     }
 }
 
+fn outcome(exit: ExitCode, meter: &TokenMeter) -> ModeRunOutcome {
+    ModeRunOutcome {
+        exit,
+        meter: meter.snapshot(),
+    }
+}
+
 /// Public entry point used by main.rs.
-pub async fn run_single(validated: Validated) -> ExitCode {
+pub async fn run_single(validated: Validated) -> ModeRunOutcome {
     use crate::cancel::shared_token;
     use crate::cancel::spawn_timeout_watchdog;
 
@@ -142,7 +150,7 @@ pub async fn run_single(validated: Validated) -> ExitCode {
                 message: err.to_string(),
             }
             .emit();
-            return ExitCode::Config;
+            return outcome(ExitCode::Config, &meter);
         }
     };
 
@@ -155,16 +163,16 @@ pub async fn run_single(validated: Validated) -> ExitCode {
                 message: format!("prompt file: {err}"),
             }
             .emit();
-            return ExitCode::Config;
+            return outcome(ExitCode::Config, &meter);
         }
     };
 
     let registry = ToolRegistry::new(validated.workdir.clone());
     let skill_loader = SkillLoader::new(validated.workdir.clone());
 
-    SingleMode {
+    let exit = SingleMode {
         validated,
-        meter,
+        meter: meter.clone(),
         cancel,
         registry,
         skill_loader,
@@ -172,5 +180,7 @@ pub async fn run_single(validated: Validated) -> ExitCode {
         prompt,
     }
     .run()
-    .await
+    .await;
+
+    outcome(exit, &meter)
 }
