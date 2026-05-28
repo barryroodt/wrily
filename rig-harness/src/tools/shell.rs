@@ -1,4 +1,4 @@
-use super::{truncate::truncated_output, ToolError, ToolOutput};
+use super::{resolve_workdir_path, truncate::truncated_output, ToolError, ToolOutput};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
@@ -22,6 +22,27 @@ fn safe_arg(a: &str) -> bool {
             .all(|c| c.is_alphanumeric() || "-_./=:,+@".contains(c))
 }
 
+fn rejects_workdir_escape(a: &str) -> bool {
+    a.contains("..") || a.starts_with('/') || a.starts_with('~')
+}
+
+fn is_path_like(a: &str) -> bool {
+    a.contains('/')
+}
+
+fn validate_shell_arg(workdir: &Path, a: &str) -> Result<(), ToolError> {
+    if rejects_workdir_escape(a) {
+        return Err(ToolError::OutsideWorkdir(a.to_string()));
+    }
+    if !safe_arg(a) {
+        return Err(ToolError::InvalidInput(format!("unsafe arg: {a}")));
+    }
+    if is_path_like(a) {
+        resolve_workdir_path(workdir, a)?;
+    }
+    Ok(())
+}
+
 pub async fn shell(workdir: &Path, args: ShellArgs) -> Result<ToolOutput, ToolError> {
     if !ALLOWED_PROGRAMS.contains(&args.program.as_str()) {
         return Err(ToolError::InvalidInput(format!(
@@ -30,9 +51,7 @@ pub async fn shell(workdir: &Path, args: ShellArgs) -> Result<ToolOutput, ToolEr
         )));
     }
     for a in &args.args {
-        if !safe_arg(a) {
-            return Err(ToolError::InvalidInput(format!("unsafe arg: {a}")));
-        }
+        validate_shell_arg(workdir, a)?;
     }
     let out = Command::new(&args.program)
         .args(&args.args)
