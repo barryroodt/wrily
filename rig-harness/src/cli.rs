@@ -76,6 +76,9 @@ pub enum ConfigError {
     #[error("ambiguous provider for model {model}")]
     AmbiguousProvider { model: String },
 
+    #[error("provider {provider:?} does not match model {model}")]
+    ProviderModelMismatch { provider: Provider, model: String },
+
     #[error("prompt file not found: {}", .0.display())]
     PromptFileMissing(PathBuf),
 
@@ -91,11 +94,20 @@ pub enum ConfigError {
 
 impl Cli {
     pub fn resolve_provider(&self) -> Result<Provider, ConfigError> {
-        if let Some(provider) = &self.provider {
-            return Ok(provider.clone());
+        if let Some(explicit) = &self.provider {
+            match infer_provider_from_model(&self.model) {
+                Ok(inferred) if inferred != *explicit => {
+                    Err(ConfigError::ProviderModelMismatch {
+                        provider: explicit.clone(),
+                        model: self.model.clone(),
+                    })
+                }
+                Ok(_) | Err(ConfigError::AmbiguousProvider { .. }) => Ok(explicit.clone()),
+                Err(e) => Err(e),
+            }
+        } else {
+            infer_provider_from_model(&self.model)
         }
-
-        infer_provider_from_model(&self.model)
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
