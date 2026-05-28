@@ -1,3 +1,4 @@
+pub mod cancel;
 pub mod cli;
 pub mod emitter;
 pub mod events;
