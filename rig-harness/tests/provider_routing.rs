@@ -75,6 +75,20 @@ fn build_adapter_openai_requires_api_key() {
     );
 }
 
+#[test]
+fn build_adapter_gemini_requires_api_key() {
+    let _env = EnvVarGuard::set("GEMINI_API_KEY", None);
+    let result = build_adapter(Provider::Gemini, "gemini-2.0-flash".into());
+    assert!(result.is_err());
+    assert!(
+        result
+            .err()
+            .expect("error")
+            .to_string()
+            .contains("GEMINI_API_KEY not set")
+    );
+}
+
 struct EnvVarGuard {
     key: String,
     previous: Option<String>,
