@@ -2592,16 +2592,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "wrily-rig-evals",
-]
-
-[[package]]
-name = "wrily-rig-evals"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
 ]
 
 [[package]]
