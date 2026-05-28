@@ -145,7 +145,7 @@ impl WrilyEvent {
 
     /// Emit as one NDJSON line on stdout + flush (via [`crate::emitter::EventEmitter`]).
     pub fn emit(&self) -> Result<()> {
-        crate::emitter::EventEmitter::global().emit(self)
+        crate::emitter::emit_active(self)
     }
 }
 
