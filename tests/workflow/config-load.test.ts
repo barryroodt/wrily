@@ -105,7 +105,7 @@ describe('workflow / config load', () => {
       graphqlClient: { graphql: async () => emptyDigestPage },
     });
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({
       inputData: {
         env: baseEnv(),

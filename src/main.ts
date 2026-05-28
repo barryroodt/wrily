@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   const workflow = buildReviewWorkflow({ agentRunner, octokit, graphqlClient });
 
   const initial: WorkflowState = { env, cfg };
-  const run = workflow.createRun();
+  const run = await workflow.createRun();
 
   try {
     const result = await run.start({ inputData: initial });

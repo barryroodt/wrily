@@ -86,7 +86,7 @@ describe('workflow / resolveAddressedThreads', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -127,7 +127,7 @@ describe('workflow / resolveAddressedThreads', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -168,7 +168,7 @@ describe('workflow / resolveAddressedThreads', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -210,7 +210,7 @@ describe('workflow / resolveAddressedThreads', () => {
         repoPath: process.cwd(),
       };
 
-      const run = workflow.createRun();
+      const run = await workflow.createRun();
       const promise = run.start({ inputData: initial });
       await vi.runAllTimersAsync();
       const result = await promise;

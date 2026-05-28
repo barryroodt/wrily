@@ -28,7 +28,7 @@ describe('workflow / digest fetch fail-hard when reply_feedback: on', () => {
       repoPath: process.cwd(),
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     expect(result.status).toBe('failed');
     if (result.status === 'failed') {

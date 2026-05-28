@@ -38,7 +38,7 @@ const fakeGraphql = { graphql: async () => emptyDigestPage };
 async function runWorkflow(initial: WorkflowState): Promise<WorkflowState> {
   const agentRunner = new FakeAgentRunner({ stdout: FAKE_REPLY, stderr: '', exitCode: 0, durationMs: 0, tokenUsage: null });
   const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-  const run = workflow.createRun();
+  const run = await workflow.createRun();
   const result = await run.start({ inputData: initial });
   if (result.status !== 'success') throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
   return result.result as unknown as WorkflowState;

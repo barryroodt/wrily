@@ -103,7 +103,7 @@ describe('workflow / bridgeSkillsStep', () => {
       repoPath: '/pre/seeded/repo',
       sharedPath: null,
     };
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -123,7 +123,7 @@ describe('workflow / bridgeSkillsStep', () => {
         repoPath: '/pre/seeded/repo',
         sharedPath,
       };
-      const run = workflow.createRun();
+      const run = await workflow.createRun();
       const result = await run.start({ inputData: initial });
       if (result.status !== 'success') {
         throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -149,7 +149,7 @@ describe('workflow / bridgeSkillsStep', () => {
         repoPath: '/pre/seeded/repo',
         sharedPath,
       };
-      const run = workflow.createRun();
+      const run = await workflow.createRun();
       const result = await run.start({ inputData: initial });
       if (result.status !== 'success') {
         throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -178,7 +178,7 @@ describe('workflow / bridgeSkillsStep', () => {
         repoPath: '/pre/seeded/repo',
         sharedPath,
       };
-      const run = workflow.createRun();
+      const run = await workflow.createRun();
       const result = await run.start({ inputData: initial });
       if (result.status !== 'success') {
         throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -205,7 +205,7 @@ describe('workflow / bridgeSkillsStep', () => {
         repoPath: '/pre/seeded/repo',
         sharedPath,
       };
-      const run = workflow.createRun();
+      const run = await workflow.createRun();
       const result = await run.start({ inputData: initial });
       if (result.status !== 'success') {
         throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);

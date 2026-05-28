@@ -94,7 +94,7 @@ describe('workflow / cloneRepoStep', () => {
       diffFiles: ['src/x.ts'],
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -137,7 +137,7 @@ describe('workflow / cloneRepoStep', () => {
     const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
 
     const initial: WorkflowState = { env: baseEnv, cfg: baseCfg };
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     expect(result.status).toBe('failed');
     if (result.status === 'failed') {
@@ -171,7 +171,7 @@ describe('workflow / cloneRepoStep', () => {
       cfg: baseCfg,
     };
 
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     expect(result.status).toBe('failed');
     if (result.status === 'failed') {
@@ -201,7 +201,7 @@ describe('workflow / cloneRepoStep', () => {
       diffFiles: ['src/x.ts'],
       repoPath: '/pre/seeded/repo',
     };
-    const run = workflow.createRun();
+    const run = await workflow.createRun();
     const result = await run.start({ inputData: initial });
     if (result.status !== 'success') {
       throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);

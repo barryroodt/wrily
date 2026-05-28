@@ -88,7 +88,7 @@ async function runWorkflow(initial: WorkflowState, digestPage: unknown) {
   const fakeOctokit = { rest: {} as any };
   const fakeGraphql = { graphql: async () => digestPage };
   const workflow = buildReviewWorkflow({ agentRunner, octokit: fakeOctokit, graphqlClient: fakeGraphql });
-  const run = workflow.createRun();
+  const run = await workflow.createRun();
   const result = await run.start({ inputData: initial });
   if (result.status !== 'success') {
     throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
