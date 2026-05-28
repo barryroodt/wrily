@@ -1,3 +1,6 @@
+pub mod find_files;
+pub mod git_diff;
+pub mod list_files;
 pub mod read_file;
 pub mod truncate;
 
