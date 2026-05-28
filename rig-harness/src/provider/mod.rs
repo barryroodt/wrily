@@ -60,8 +60,11 @@ pub struct ToolSchema {
 /// Resolve a `Provider` enum + model string into a boxed adapter. Errors if the
 /// requested provider's API key env var is missing or the provider is not yet implemented.
 pub fn build_adapter(provider: Provider, model: String) -> anyhow::Result<Box<dyn ProviderAdapter>> {
+    let _model = model;
     match provider {
         // Phase 1.2-1.5 fill these in
-        _ => anyhow::bail!("provider {:?} adapter not yet implemented (Phase 1.2-1.5)", provider),
+        Provider::Anthropic | Provider::OpenAi | Provider::Gemini | Provider::Cursor => {
+            anyhow::bail!("provider {:?} adapter not yet implemented (Phase 1.2-1.5)", provider)
+        }
     }
 }
