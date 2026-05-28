@@ -1,8 +1,15 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
+use std::io::{ErrorKind as IoErrorKind, Write};
 
 pub const TRUNCATE_MARKER: &str = "…[truncated]";
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 pub fn truncate_args(s: &str, limit: usize) -> String {
     if s.len() <= limit {
@@ -30,6 +37,7 @@ pub enum ExitCode {
     Ok,
     Budget,
     Timeout,
+    Config,
     Error,
 }
 
@@ -121,9 +129,36 @@ pub enum WrilyEvent {
     },
 }
 
+impl WrilyEvent {
+    /// Terminal `result` event with zero counters. Real callers fill counters
+    /// from TokenMeter once Phase 4 lands.
+    pub fn terminal(exit: ExitCode) -> Self {
+        Self::Result {
+            ts: now_ms(),
+            exit,
+            total_input: 0,
+            total_output: 0,
+            total_cache_read: 0,
+            total_cache_write: 0,
+            duration_ms: 0,
+        }
+    }
+
+    /// Emit as one NDJSON line on stdout + flush.
+    /// `BrokenPipe` is swallowed (parent closed; treat as graceful shutdown).
+    /// Other IO/serde errors propagate.
+    pub fn emit(&self) -> Result<()> {
+        let line = serde_json::to_string(self)?;
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        match writeln!(handle, "{line}").and_then(|_| handle.flush()) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == IoErrorKind::BrokenPipe => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 pub fn emit_event(event: &WrilyEvent) -> Result<()> {
-    let line = serde_json::to_string(event)?;
-    println!("{line}");
-    io::stdout().flush()?;
-    Ok(())
+    event.emit()
 }
