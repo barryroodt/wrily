@@ -37,13 +37,10 @@ fn cli_for_model(workdir: &Path, prompt_file: &Path, model: &str) -> Cli {
 }
 
 #[test]
-fn build_adapter_errors_for_every_provider_variant() {
-    for provider in [
-        Provider::Anthropic,
-        Provider::OpenAi,
-        Provider::Gemini,
-        Provider::Cursor,
-    ] {
+fn build_adapter_errors_for_unimplemented_provider_variants() {
+    let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", None);
+
+    for provider in [Provider::Gemini, Provider::Cursor] {
         let result = build_adapter(provider.clone(), "test-model".into());
         assert!(result.is_err(), "provider {:?} should be unimplemented", provider);
         let err = result.err().unwrap();
@@ -52,6 +49,62 @@ fn build_adapter_errors_for_every_provider_variant() {
             "provider {:?}: {err}",
             provider
         );
+    }
+}
+
+#[test]
+fn build_adapter_anthropic_requires_api_key() {
+    let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", None);
+    let result = build_adapter(Provider::Anthropic, "claude-sonnet-4".into());
+    assert!(result.is_err());
+    assert!(
+        result
+            .err()
+            .expect("error")
+            .to_string()
+            .contains("ANTHROPIC_API_KEY not set")
+    );
+}
+
+#[test]
+fn build_adapter_openai_requires_api_key() {
+    let _env = EnvVarGuard::set("OPENAI_API_KEY", None);
+    let result = build_adapter(Provider::OpenAi, "gpt-4o".into());
+    assert!(result.is_err());
+    assert!(
+        result
+            .err()
+            .expect("error")
+            .to_string()
+            .contains("OPENAI_API_KEY not set")
+    );
+}
+
+struct EnvVarGuard {
+    key: String,
+    previous: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &str, value: Option<&str>) -> Self {
+        let previous = std::env::var(key).ok();
+        match value {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+        Self {
+            key: key.to_string(),
+            previous,
+        }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(&self.key, value),
+            None => std::env::remove_var(&self.key),
+        }
     }
 }
 
