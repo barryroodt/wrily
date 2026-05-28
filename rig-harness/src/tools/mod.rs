@@ -2,8 +2,11 @@ pub mod find_files;
 pub mod git_diff;
 pub mod list_files;
 pub mod read_file;
+pub mod registry;
 pub mod shell;
 pub mod truncate;
+
+pub use registry::ToolRegistry;
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +28,8 @@ pub enum ToolError {
     Io(#[from] std::io::Error),
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    #[error("unknown tool: {0}")]
+    UnknownTool(String),
 }
 
 /// Resolve a relative path against `workdir`, rejecting symlink-traversal escapes.
