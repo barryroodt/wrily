@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use crate::cli::Provider;
 
 pub mod anthropic;
+pub mod gemini;
 pub mod openai;
 
 pub use anthropic::AnthropicProvider;
+pub use gemini::GeminiProvider;
 pub use openai::OpenAiProvider;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,13 +67,16 @@ pub struct ToolSchema {
 
 /// Resolve a `Provider` enum + model string into a boxed adapter. Errors if the
 /// requested provider's API key env var is missing or the provider is not yet implemented.
-pub fn build_adapter(provider: Provider, model: String) -> anyhow::Result<Box<dyn ProviderAdapter>> {
+pub fn build_adapter(
+    provider: Provider,
+    model: String,
+) -> anyhow::Result<Box<dyn ProviderAdapter>> {
     match provider {
         Provider::Anthropic => Ok(Box::new(anthropic::AnthropicProvider::new(model)?)),
         Provider::OpenAi => Ok(Box::new(openai::OpenAiProvider::new(model)?)),
-        // Phase 1.4-1.5 fill these in
-        Provider::Gemini | Provider::Cursor => {
-            anyhow::bail!("provider {:?} adapter not yet implemented (Phase 1.2-1.5)", provider)
+        Provider::Gemini => Ok(Box::new(GeminiProvider::new(model)?)),
+        Provider::Cursor => {
+            anyhow::bail!("provider {:?} adapter not yet implemented (Phase 1.5)", provider)
         }
     }
 }

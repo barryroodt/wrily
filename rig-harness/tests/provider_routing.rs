@@ -38,18 +38,13 @@ fn cli_for_model(workdir: &Path, prompt_file: &Path, model: &str) -> Cli {
 
 #[test]
 fn build_adapter_errors_for_unimplemented_provider_variants() {
-    let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", None);
-
-    for provider in [Provider::Gemini, Provider::Cursor] {
-        let result = build_adapter(provider.clone(), "test-model".into());
-        assert!(result.is_err(), "provider {:?} should be unimplemented", provider);
-        let err = result.err().unwrap();
-        assert!(
-            err.to_string().contains("not yet implemented"),
-            "provider {:?}: {err}",
-            provider
-        );
-    }
+    let result = build_adapter(Provider::Cursor, "test-model".into());
+    assert!(result.is_err(), "Cursor provider should be unimplemented");
+    let err = result.err().unwrap();
+    assert!(
+        err.to_string().contains("not yet implemented"),
+        "Cursor: {err}"
+    );
 }
 
 #[test]
