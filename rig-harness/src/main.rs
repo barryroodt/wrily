@@ -1,63 +1,40 @@
-use anyhow::Result;
-use clap::Parser;
-use wrily_rig::cli::Cli;
-use wrily_rig::events::{emit_event, ErrorKind, ExitCode, WrilyEvent};
-use wrily_rig::tracing_setup::{init_tracing, install_panic_hook};
+use wrily_rig::{
+    cli::Cli,
+    events::{ErrorKind, ExitCode, WrilyEvent, now_ms},
+    tracing_setup::{init_tracing, install_panic_hook},
+};
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     init_tracing();
     install_panic_hook();
 
-    let cli = Cli::parse();
-
-    if let Err(err) = cli.validate() {
-        emit_config_error(&err)?;
-        std::process::exit(4);
+    if std::env::var("WRILY_RIG_PANIC_FOR_TEST").is_ok() {
+        panic!("forced panic for test");
     }
 
-    let provider = match cli.resolve_provider() {
-        Ok(provider) => provider,
+    let v = match Cli::parse_and_validate() {
+        Ok(v) => v,
         Err(err) => {
-            emit_config_error(&err)?;
+            WrilyEvent::Error {
+                ts: now_ms(),
+                kind: ErrorKind::Config,
+                message: err.to_string(),
+            }
+            .emit()?;
+            WrilyEvent::terminal(ExitCode::Config).emit()?;
             std::process::exit(4);
         }
     };
 
-    emit_event(&WrilyEvent::Start {
-        ts: 0,
-        model: cli.model.clone(),
-        provider: provider.as_str().to_string(),
-        mode: cli.mode.as_str().to_string(),
-        workdir: cli.workdir.display().to_string(),
-    })?;
-    emit_event(&WrilyEvent::Result {
-        ts: 0,
-        exit: ExitCode::Ok,
-        total_input: 0,
-        total_output: 0,
-        total_cache_read: 0,
-        total_cache_write: 0,
-        duration_ms: 0,
-    })?;
+    WrilyEvent::Start {
+        ts: now_ms(),
+        model: v.model.clone(),
+        provider: format!("{:?}", v.provider).to_lowercase(),
+        mode: format!("{:?}", v.mode).to_lowercase(),
+        workdir: v.workdir.display().to_string(),
+    }
+    .emit()?;
 
-    Ok(())
-}
-
-fn emit_config_error(err: &wrily_rig::cli::ConfigError) -> Result<()> {
-    emit_event(&WrilyEvent::Error {
-        ts: 0,
-        kind: ErrorKind::Config,
-        message: err.to_string(),
-    })?;
-    emit_event(&WrilyEvent::Result {
-        ts: 0,
-        exit: ExitCode::Error,
-        total_input: 0,
-        total_output: 0,
-        total_cache_read: 0,
-        total_cache_write: 0,
-        duration_ms: 0,
-    })?;
+    WrilyEvent::terminal(ExitCode::Ok).emit()?;
     Ok(())
 }

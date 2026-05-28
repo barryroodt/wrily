@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use wrily_rig::events::{ErrorKind, ExitCode, WrilyEvent};
+use wrily_rig::events::{ExitCode, WrilyEvent};
 
 #[test]
 fn stderr_gets_tracing_stdout_stays_ndjson_only() {
@@ -41,39 +41,7 @@ fn stderr_gets_tracing_stdout_stays_ndjson_only() {
 
     let last: WrilyEvent = serde_json::from_str(lines.last().expect("result line")).expect("parse");
     assert!(
-        matches!(last, WrilyEvent::Result { exit: ExitCode::Error, .. }),
-        "stdout must end with a result event"
-    );
-}
-
-#[test]
-fn panic_hook_emits_error_then_result_ndjson() {
-    let error = WrilyEvent::Error {
-        ts: 0,
-        kind: ErrorKind::Internal,
-        message: "deliberate test panic".into(),
-    };
-    let result = WrilyEvent::Result {
-        ts: 0,
-        exit: ExitCode::Error,
-        total_input: 0,
-        total_output: 0,
-        total_cache_read: 0,
-        total_cache_write: 0,
-        duration_ms: 0,
-    };
-
-    let error_json = serde_json::to_string(&error).expect("serialize error");
-    let result_json = serde_json::to_string(&result).expect("serialize result");
-
-    let parsed_error: WrilyEvent = serde_json::from_str(&error_json).expect("parse error");
-    let parsed_result: WrilyEvent = serde_json::from_str(&result_json).expect("parse result");
-
-    assert_eq!(parsed_error, error);
-    assert_eq!(parsed_result, result);
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&result_json)
-            .expect("parse result value")["exit"],
-        "error"
+        matches!(last, WrilyEvent::Result { exit: ExitCode::Config, .. }),
+        "stdout must end with a config result event"
     );
 }
