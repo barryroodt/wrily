@@ -1,5 +1,5 @@
 [workspace]
-members = ["."]
+members = [".", "evals"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -33,3 +33,6 @@ tracing-subscriber.workspace = true
 clap = { version = "4", features = ["derive"] }
 anyhow.workspace = true
 thiserror = "2"
+
+[dev-dependencies]
+wrily-rig-evals = { path = "evals" }
