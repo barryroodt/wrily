@@ -2,7 +2,7 @@ use crate::expected::Expected;
 use thiserror::Error;
 use wrily_rig::events::{ExitCode, WrilyEvent};
 
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[error("{rule}: {detail}")]
 pub struct AssertionFailure {
     pub rule: String,
