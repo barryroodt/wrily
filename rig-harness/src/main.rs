@@ -39,15 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     let exit = match v.mode {
         Mode::Single => mode::single::run_single(v).await,
-        Mode::Team => {
-            let _ = WrilyEvent::Error {
-                ts: now_ms(),
-                kind: ErrorKind::Config,
-                message: "team mode not yet implemented (Phase 5.3)".into(),
-            }
-            .emit();
-            ExitCode::Config
-        }
+        Mode::Team => mode::team::run_team(v).await,
     };
     WrilyEvent::terminal(exit).emit()?;
     Ok(())
