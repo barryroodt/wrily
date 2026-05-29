@@ -1,0 +1,11 @@
+{
+  "fixture": "001-sql-injection",
+  "exit": "ok",
+  "min_findings": 1,
+  "max_findings": null,
+  "must_contain_phrases": ["sql injection"],
+  "must_not_contain_phrases": [],
+  "max_input_tokens": null,
+  "max_output_tokens": null,
+  "max_duration_ms": null
+}

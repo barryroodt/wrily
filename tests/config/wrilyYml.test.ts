@@ -76,7 +76,7 @@ describe('applyEnvOverrides', () => {
   const baseEnv = (over: Partial<RuntimeEnv> = {}): RuntimeEnv => ({
     authMethod: 'oauth',
     anthropicApiKey: null,
-    claudeCodeOauthToken: 'sk-ant-oat01-xxx',
+    claudeOauthToken: 'sk-ant-oat01-xxx',
     githubToken: 'gho_xxx',
     prNumber: 1,
     githubRepository: 'org/repo',

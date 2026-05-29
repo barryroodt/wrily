@@ -1,0 +1,21 @@
+--- a/api/main.rs
++++ b/api/main.rs
+@@ -1,3 +1,4 @@
+ fn main() {
+     println!("api service");
++    // TODO: add error handling
+ }
+--- a/web/main.rs
++++ b/web/main.rs
+@@ -1,3 +1,4 @@
+ fn main() {
+     println!("web service");
++    // TODO: add error handling
+ }
+--- a/cli/main.rs
++++ b/cli/main.rs
+@@ -1,3 +1,4 @@
+ fn main() {
+     println!("cli tool");
++    // TODO: add error handling
+ }

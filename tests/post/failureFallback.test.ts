@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RuntimeEnv } from '../../src/config/types.js';
 import { maybePostFailure } from '../../src/post/failureFallback.js';
-import { AgentTimeoutError, AgentBudgetExceededError } from '../../src/agent/claudeCode.js';
+import { AgentTimeoutError, AgentBudgetExceededError } from '../../src/agent/errors.js';
 
 function mkClient() {
   return {
@@ -20,7 +20,7 @@ function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
   return {
     authMethod: 'oauth',
     anthropicApiKey: null,
-    claudeCodeOauthToken: 'sk-ant-oat01-x',
+    claudeOauthToken: 'sk-ant-oat01-x',
     githubToken: 'gho_x',
     prNumber: 42,
     githubRepository: 'org/repo',

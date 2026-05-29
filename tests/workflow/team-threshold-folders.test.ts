@@ -18,7 +18,7 @@ const emptyDigestPage = {
 };
 
 const baseEnv = {
-  authMethod: 'oauth' as const, anthropicApiKey: null, claudeCodeOauthToken: 'sk-ant-oat01-x',
+  authMethod: 'oauth' as const, anthropicApiKey: null, claudeOauthToken: 'sk-ant-oat01-x',
   githubToken: 'gho_x', prNumber: 1, githubRepository: 'org/repo',
   baseBranch: 'main', commitSha: 'abc', sharedRepo: 'your-org/shared-wrily-skills', sharedToken: '',
   wrilyBotLogin: 'wrily', reviewRoundIndex: 0, scopeOverride: '' as const,

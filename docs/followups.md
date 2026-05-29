@@ -70,8 +70,18 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 - Pen-test the webhook receiver before broader adoption (HMAC bypass attempts, replay, payload-injection, large-payload DoS).
 - Add a `gitleaks` GitHub Action workflow so history scans run on every push, not just locally.
 
+## Post-v1 rig-harness follow-ups
+
+Deferred after the [`claude -p` → `wrily-rig` cutover](https://github.com/barryroodt/wrily/pull/28) (spec: `solo://proj/11/scratchpad/rig-harness-replace--1`, plan: `solo://proj/11/scratchpad/rig-harness-implemen--2`):
+
+- **MCP support** — deferred per rig-harness invariant #8 (no MCP in v1). Revisit once native tools + shell allowlist prove insufficient.
+- **LLM-judge evaluations** — Phase 7+ future work; fixture runner + assertions exist, but automated judge scoring is not in v1 scope.
+- **Multi-provider matrix expansion** — v1 covers anthropic / openai / gemini / cursor; add providers (e.g. Bedrock, Azure, local) as demand appears.
+- **Cumulative-spend dashboard** — per-review `max_budget_usd` caps exist; org-wide Anthropic spend visibility is still missing (see Operational gaps below).
+
 ## Closed / done (kept for context)
 
+- ✅ Replace `claude -p` subprocess with `wrily-rig` sidecar — hard cutover to `RigRunner` ([#28](https://github.com/barryroodt/wrily/pull/28); spec `solo://proj/11/scratchpad/rig-harness-replace--1`, plan `solo://proj/11/scratchpad/rig-harness-implemen--2`).
 - ✅ Public release (`feat: Initial release`).
 - ✅ Legacy reference scrub (caveman branding removed, metal-standards example replaced).
 - ✅ SECURITY.md, Dependabot config, Contributing section, gitleaks allowlist.

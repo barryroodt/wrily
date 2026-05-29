@@ -1,0 +1,5 @@
+{"type":"assistant","text":"I'll check the weather for you."}
+{"type":"tool_call","status":"running","callId":"call_weather_1","name":"get_weather","args":{"city":"Paris"}}
+{"type":"tool_call","status":"completed","callId":"call_weather_1","name":"get_weather","result":{"temp_c":18}}
+{"type":"interaction_update","usage":{"input_tokens":50,"output_tokens":10,"cache_read_tokens":0,"cache_write_tokens":0}}
+{"type":"turn-ended","usage":{"input_tokens":100,"output_tokens":25,"cache_read_tokens":800,"cache_write_tokens":100}}

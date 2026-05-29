@@ -1,0 +1,9 @@
+--- a/foo.rs
++++ b/foo.rs
+@@ -1,4 +1,4 @@
+ fn main() {
+-    let message = "hello, world";
+-    println!("{message}");
++  let message = "hello, world";
++  println!("{message}");
+ }

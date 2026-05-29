@@ -6,7 +6,7 @@ import type { Review } from '../../src/post/extract.js';
 const baseEnv: WorkflowState['env'] = {
   authMethod: 'oauth',
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'sk-ant-oat01-x',
+  claudeOauthToken: 'sk-ant-oat01-x',
   githubToken: 'gho_x',
   prNumber: 42,
   githubRepository: 'org/repo',

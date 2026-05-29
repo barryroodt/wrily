@@ -1,0 +1,57 @@
+name: rig-build
+
+on:
+  pull_request:
+    paths: [rig-harness/**, .github/workflows/rig-build.yml]
+  push:
+    branches: [main]
+    paths: [rig-harness/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'write' || 'read' }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, arch: amd64 }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-gnu, arch: arm64 }
+          - { os: macos-latest, target: aarch64-apple-darwin, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rig-harness
+      - run: cargo fmt --manifest-path rig-harness/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path rig-harness/Cargo.toml --workspace --all-targets -- -D warnings
+      - run: cargo test --manifest-path rig-harness/Cargo.toml --workspace -- --test-threads=1
+      - run: cargo build --manifest-path rig-harness/Cargo.toml --release --target ${{ matrix.target }}
+      - run: strip rig-harness/target/${{ matrix.target }}/release/wrily-rig || true
+      - name: Package release artifact
+        run: |
+          bin="rig-harness/target/${{ matrix.target }}/release/wrily-rig"
+          packaged="rig-harness/target/${{ matrix.target }}/release/wrily-rig-${{ matrix.target }}"
+          cp "$bin" "$packaged"
+          dest_dir="$(dirname "$packaged")"
+          dest_name="$(basename "$packaged")"
+          ( cd "$dest_dir" && sha256sum "$dest_name" > "${dest_name}.sha256" )
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wrily-rig-${{ github.sha }}
+          files: |
+            rig-harness/target/${{ matrix.target }}/release/wrily-rig-${{ matrix.target }}
+            rig-harness/target/${{ matrix.target }}/release/wrily-rig-${{ matrix.target }}.sha256
+          name: wrily-rig ${{ matrix.target }}
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

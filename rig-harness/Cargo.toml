@@ -1,0 +1,47 @@
+[workspace]
+members = [".", "evals"]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[package]
+name = "wrily-rig"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "wrily_rig"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wrily-rig"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = "0.1"
+rig-core = "0.37.0"
+tokio = { version = "1", features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4", features = ["derive"] }
+anyhow.workspace = true
+thiserror = "2"
+globwalk = "0.9"
+regex = "1"
+tokio-util = { version = "0.7", features = ["rt"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
+eventsource-stream = "0.2"
+
+[dev-dependencies]
+wrily-rig-evals = { path = "evals" }
+rig-core = "0.37.0"
+tempfile = "3"
+wiremock = "0.6"
