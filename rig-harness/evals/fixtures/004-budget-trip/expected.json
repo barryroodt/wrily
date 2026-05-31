@@ -1,11 +1,5 @@
 {
   "fixture": "004-budget-trip",
   "exit": "budget",
-  "min_findings": null,
-  "max_findings": null,
-  "must_contain_phrases": [],
-  "must_not_contain_phrases": [],
-  "max_input_tokens": null,
-  "max_output_tokens": null,
-  "max_duration_ms": null
+  "max_tokens": 50000
 }

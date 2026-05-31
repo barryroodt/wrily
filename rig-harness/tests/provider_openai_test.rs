@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use serde_json::{json, Value};
 use wiremock::matchers::{header, method, path};
@@ -7,23 +7,26 @@ use wrily_rig::provider::{
     ChatMessage, OpenAiProvider, ProviderAdapter, ToolCallRequest, ToolSchema,
 };
 
+/// Process-wide lock serializing env-mutating tests in this binary; env vars are
+/// global so the default multi-threaded runner otherwise races
+/// `OPENAI_API_KEY`/`OPENAI_BASE_URL` between tests. Held for the guard's lifetime.
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 struct EnvVarGuard {
     vars: Vec<(String, Option<String>)>,
+    _lock: MutexGuard<'static, ()>,
 }
 
 impl EnvVarGuard {
     fn set(key: &str, value: Option<&str>) -> Self {
-        let previous = std::env::var(key).ok();
-        match value {
-            Some(value) => std::env::set_var(key, value),
-            None => std::env::remove_var(key),
-        }
-        Self {
-            vars: vec![(key.to_string(), previous)],
-        }
+        Self::set_many(&[(key, value)])
     }
 
     fn set_many(pairs: &[(&str, Option<&str>)]) -> Self {
+        let lock = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let mut vars = Vec::with_capacity(pairs.len());
         for (key, value) in pairs {
             let previous = std::env::var(key).ok();
@@ -33,7 +36,7 @@ impl EnvVarGuard {
             }
             vars.push(((*key).to_string(), previous));
         }
-        Self { vars }
+        Self { vars, _lock: lock }
     }
 }
 

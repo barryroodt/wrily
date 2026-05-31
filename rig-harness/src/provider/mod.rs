@@ -7,6 +7,7 @@ pub mod anthropic;
 pub mod cursor;
 pub mod gemini;
 pub mod openai;
+pub mod retry;
 mod rig_convert;
 
 pub use anthropic::AnthropicProvider;

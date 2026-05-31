@@ -28,3 +28,20 @@ export class AgentBudgetExceededError extends Error {
     this.name = 'AgentBudgetExceededError';
   }
 }
+
+/**
+ * Thrown when the sidecar reports a configuration error (missing API key,
+ * unroutable model, bad workdir/prompt) — surfaced as `error{kind:"config"}`
+ * and/or process exit code 4. Distinguished from a generic crash so the outer
+ * workflow can post a config-specific failure comment instead of retrying.
+ */
+export class ConfigError extends Error {
+  constructor(
+    public readonly stdout: string,
+    public readonly stderr: string,
+    message = 'Agent configuration error',
+  ) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}

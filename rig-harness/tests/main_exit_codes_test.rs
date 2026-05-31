@@ -9,12 +9,24 @@ use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wrily_rig::events::{ExitCode, WrilyEvent};
 
+/// Process-wide lock serializing env-mutating tests in this binary; env vars are
+/// global so the default multi-threaded runner otherwise races
+/// `OPENAI_API_KEY`/`OPENAI_BASE_URL` across the exit-code subprocess tests.
+/// Held for the guard's lifetime (covers env setup + the subprocess spawn that
+/// inherits it).
+fn env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 struct EnvVarGuard {
     vars: Vec<(String, Option<String>)>,
+    _lock: std::sync::MutexGuard<'static, ()>,
 }
 
 impl EnvVarGuard {
     fn set_many(pairs: &[(&str, Option<&str>)]) -> Self {
+        let lock = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let mut vars = Vec::with_capacity(pairs.len());
         for (key, value) in pairs {
             let previous = std::env::var(key).ok();
@@ -24,7 +36,7 @@ impl EnvVarGuard {
             }
             vars.push(((*key).to_string(), previous));
         }
-        Self { vars }
+        Self { vars, _lock: lock }
     }
 }
 

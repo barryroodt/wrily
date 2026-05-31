@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::cli::Provider;
+use crate::provider::retry::{classify_error, with_retry, RetryConfig};
 use crate::provider::{
     ChatMessage, ProviderAdapter, ProviderResponse, ToolCallRequest, ToolResult, ToolSchema,
 };
@@ -110,8 +111,7 @@ fn parse_tool_args(args_json: &str) -> anyhow::Result<Value> {
     if args_json.trim().is_empty() {
         return Ok(json!({}));
     }
-    Ok(serde_json::from_str(args_json)
-        .unwrap_or_else(|_| Value::String(args_json.to_string())))
+    Ok(serde_json::from_str(args_json).unwrap_or_else(|_| Value::String(args_json.to_string())))
 }
 
 fn tool_result_to_bridge(result: &ToolResult) -> Value {
@@ -229,7 +229,10 @@ fn process_stream_event(
             }
         }
         "tool_call" | "tool_use" => {
-            let status = payload.get("status").and_then(Value::as_str).unwrap_or("running");
+            let status = payload
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("running");
             if status == "completed" {
                 return Ok(());
             }
@@ -320,6 +323,21 @@ impl ProviderAdapter for CursorProvider {
         messages: &[ChatMessage],
         tools: &[ToolSchema],
     ) -> anyhow::Result<ProviderResponse> {
+        let config = RetryConfig::default();
+        with_retry(&config, classify_error, || {
+            Box::pin(self.complete_once(system, messages, tools))
+        })
+        .await
+    }
+}
+
+impl CursorProvider {
+    async fn complete_once(
+        &self,
+        system: &str,
+        messages: &[ChatMessage],
+        tools: &[ToolSchema],
+    ) -> anyhow::Result<ProviderResponse> {
         let bridge_messages = chat_messages_to_bridge(messages)?;
         let bridge_tools = tools_to_bridge(tools);
         let cwd = workdir_for_request();
@@ -342,6 +360,22 @@ impl ProviderAdapter for CursorProvider {
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("cursor bridge request failed: {e}"))?;
+
+        // We own the HTTP layer here, so classify status precisely and surface
+        // `Retry-After` to the retry policy via the embedded `retry-after=` hint.
+        let status = response.status();
+        if !status.is_success() {
+            let retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.trim().parse::<u64>().ok());
+            let hint = retry_after
+                .map(|s| format!(" retry-after={s}"))
+                .unwrap_or_default();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("cursor bridge returned {status}:{hint} {body}");
+        }
 
         consume_sse(response).await
     }

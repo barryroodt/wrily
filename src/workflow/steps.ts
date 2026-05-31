@@ -413,6 +413,7 @@ export function makeSteps(deps: WorkflowDeps) {
       const result = await deps.agentRunner.run({
         prompt: state.renderedPrompt!,
         model: state.cfg.model,
+        mode: state.reviewMode === 'team' ? 'team' : 'single',
         maxBudgetUsd: state.cfg.max_budget_usd ?? (state.reviewMode === 'team' ? 15 : 5),
         workingDir: state.repoPath ?? '/tmp/repo',
         env: process.env,

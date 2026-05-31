@@ -121,6 +121,11 @@ pub enum WrilyEvent {
         input_tokens: u64,
         output_tokens: u64,
     },
+    SubagentFailed {
+        ts: u64,
+        name: String,
+        reason: String,
+    },
     AssistantText {
         ts: u64,
         role: String,

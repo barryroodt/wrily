@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import {
   AgentBudgetExceededError,
   AgentTimeoutError,
+  ConfigError,
 } from './errors.js';
+import { computeCostUsd } from './costs.js';
 import type { AgentResult, AgentRunOptions, AgentRunner, AgentTokenUsage } from './runner.js';
 
 type WrilyEvent =
@@ -16,6 +18,7 @@ type WrilyEvent =
   | { event: 'tool_result'; ts: number; role: string; turn: number; tool: string; bytes: number; truncated: boolean; error?: string }
   | { event: 'subagent_spawn'; ts: number; name: string; template: string; scope: string }
   | { event: 'subagent_done'; ts: number; name: string; turns: number; input_tokens: number; output_tokens: number }
+  | { event: 'subagent_failed'; ts: number; name: string; reason: string }
   | { event: 'assistant_text'; ts: number; role: string; text: string }
   | { event: 'budget_exceeded'; ts: number; limit: number; total: number }
   | { event: 'error'; ts: number; kind: 'config' | 'provider' | 'team_collapse' | 'internal'; message: string }
@@ -46,13 +49,55 @@ function collectAssistantText(events: WrilyEvent[]): string {
 
 function tokenUsageFromTerminal(
   terminal: Extract<WrilyEvent, { event: 'result' }>,
+  model: string,
 ): AgentTokenUsage {
-  return {
+  const usage: AgentTokenUsage = {
     inputTokens: terminal.total_input,
     outputTokens: terminal.total_output,
     cacheReadTokens: terminal.total_cache_read,
     cacheWriteTokens: terminal.total_cache_write,
   };
+  // Pricing lives TS-side (the binary is provider-pricing-agnostic): derive USD
+  // from the emitted token counts. Unknown models leave costUsd undefined.
+  const costUsd = computeCostUsd(model, usage);
+  if (costUsd !== undefined) {
+    usage.costUsd = costUsd;
+  }
+  return usage;
+}
+
+/**
+ * Provider credentials + transport overrides the sidecar may need. Only these
+ * keys are forwarded from the parent environment (spec: forward only relevant
+ * provider keys, not the whole environment). PATH/HOME are included so the
+ * binary can be located and resolve its config dir.
+ */
+const FORWARDED_ENV_KEYS = [
+  'PATH',
+  'HOME',
+  'RUST_LOG',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_API_BASE',
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'GEMINI_API_KEY',
+  'GEMINI_API_BASE',
+  'CURSOR_API_KEY',
+  'CURSOR_API_BASE',
+  'CURSOR_BRIDGE_URL',
+] as const;
+
+function buildChildEnv(
+  optsEnv: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const key of FORWARDED_ENV_KEYS) {
+    if (process.env[key] !== undefined) {
+      env[key] = process.env[key];
+    }
+  }
+  // Caller-supplied env (e.g. per-run provider keys) takes precedence.
+  return { ...env, ...optsEnv };
 }
 
 export type RigRunnerConfig = {
@@ -89,8 +134,12 @@ export class RigRunner implements AgentRunner {
 
   private async runBinary(opts: AgentRunOptions, promptFile: string): Promise<AgentResult> {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // Per-run mode (team/single) from the workflow wins over the constructor
+    // default; the sidecar infers the provider from --model when --provider is
+    // omitted, so --provider is only passed when explicitly configured.
+    const mode = opts.mode ?? this.mode;
     const args = [
-      '--mode', this.mode,
+      '--mode', mode,
       '--model', opts.model,
       '--workdir', opts.workingDir,
       '--prompt-file', promptFile,
@@ -103,7 +152,7 @@ export class RigRunner implements AgentRunner {
 
     const child = spawn(this.binaryPath, args, {
       cwd: opts.workingDir,
-      env: { ...process.env, ...opts.env },
+      env: buildChildEnv(opts.env),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -131,15 +180,27 @@ export class RigRunner implements AgentRunner {
         break;
       }
     }
+    const configError = events.find(
+      (e): e is Extract<WrilyEvent, { event: 'error' }> => e.event === 'error' && e.kind === 'config',
+    );
     const assistantText = collectAssistantText(events);
 
+    // Precedence: budget and timeout are explicit terminal outcomes; config
+    // errors map to ConfigError (sidecar exit 4 / error{kind:"config"}); a child
+    // that exits without any terminal result is treated as a timeout.
     if (terminal?.exit === 'budget') {
       throw new AgentBudgetExceededError(stdout, stderrText);
     }
     if (terminal?.exit === 'timeout') {
       throw new AgentTimeoutError(timeoutMs, stdout, stderrText);
     }
-    if (exitCode !== 0 || !terminal || terminal.exit !== 'ok') {
+    if (terminal?.exit === 'config' || configError || exitCode === 4) {
+      throw new ConfigError(stdout, stderrText, configError?.message ?? 'Agent configuration error');
+    }
+    if (!terminal) {
+      throw new AgentTimeoutError(timeoutMs, stdout, stderrText);
+    }
+    if (exitCode !== 0 || terminal.exit !== 'ok') {
       throw new Error(`wrily-rig exited with code ${exitCode}: ${stderrText}\n${stdout}`);
     }
 
@@ -148,7 +209,7 @@ export class RigRunner implements AgentRunner {
       stderr: stderrText,
       exitCode: 0,
       durationMs: terminal.duration_ms,
-      tokenUsage: tokenUsageFromTerminal(terminal),
+      tokenUsage: tokenUsageFromTerminal(terminal, opts.model),
     };
   }
 }

@@ -8,6 +8,7 @@ use rig_core::{
 };
 
 use crate::cli::Provider;
+use crate::provider::retry::{classify_error, with_retry, RetryConfig};
 use crate::provider::{
     ChatMessage, ProviderAdapter, ProviderResponse, ToolCallRequest, ToolResult, ToolSchema,
 };
@@ -171,6 +172,21 @@ impl ProviderAdapter for OpenAiProvider {
     }
 
     async fn complete(
+        &self,
+        system: &str,
+        messages: &[ChatMessage],
+        tools: &[ToolSchema],
+    ) -> anyhow::Result<ProviderResponse> {
+        let config = RetryConfig::default();
+        with_retry(&config, classify_error, || {
+            Box::pin(self.complete_once(system, messages, tools))
+        })
+        .await
+    }
+}
+
+impl OpenAiProvider {
+    async fn complete_once(
         &self,
         system: &str,
         messages: &[ChatMessage],

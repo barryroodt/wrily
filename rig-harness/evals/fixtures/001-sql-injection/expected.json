@@ -2,10 +2,9 @@
   "fixture": "001-sql-injection",
   "exit": "ok",
   "min_findings": 1,
-  "max_findings": null,
-  "must_contain_phrases": ["sql injection"],
-  "must_not_contain_phrases": [],
-  "max_input_tokens": null,
-  "max_output_tokens": null,
-  "max_duration_ms": null
+  "max_findings": 8,
+  "must_contain_severity": ["critical"],
+  "must_match_path": ["users_controller.rb"],
+  "must_match_message_regex": ["(?i)injection|sanitiz|parameteriz"],
+  "forbid_match_message_regex": ["(?i)formatting|whitespace"]
 }

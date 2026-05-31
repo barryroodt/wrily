@@ -68,9 +68,7 @@ impl FixtureRunner {
                     eprintln!(
                         "::error::eval spend cap exceeded: ${cumulative_spend:.4} > ${SPEND_CAP_USD:.2}"
                     );
-                    bail!(
-                        "eval spend cap exceeded: ${cumulative_spend:.4} > ${SPEND_CAP_USD:.2}"
-                    );
+                    bail!("eval spend cap exceeded: ${cumulative_spend:.4} > ${SPEND_CAP_USD:.2}");
                 }
             }
         }
@@ -100,6 +98,10 @@ async fn run_fixture(binary: &Path, dir: &Path) -> Result<FixtureResult> {
             .await?;
     }
 
+    // Per-fixture token cap (spec): the budget-trip fixture trips at a low cap
+    // without affecting the others. Defaults to 200k when unset.
+    let max_tokens = expected.max_tokens.unwrap_or(200_000).to_string();
+
     let start = std::time::Instant::now();
     let out = Command::new(binary)
         .args([
@@ -112,7 +114,7 @@ async fn run_fixture(binary: &Path, dir: &Path) -> Result<FixtureResult> {
             "--prompt-file",
             &prompt_file.display().to_string(),
             "--max-tokens",
-            "200000",
+            &max_tokens,
             "--timeout-ms",
             "300000",
         ])

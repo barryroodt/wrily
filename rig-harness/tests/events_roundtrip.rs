@@ -97,6 +97,15 @@ fn subagent_done_roundtrip() {
 }
 
 #[test]
+fn subagent_failed_roundtrip() {
+    roundtrip(&WrilyEvent::SubagentFailed {
+        ts: 7,
+        name: "researcher".into(),
+        reason: "reviewer task panicked".into(),
+    });
+}
+
+#[test]
 fn assistant_text_roundtrip() {
     roundtrip(&WrilyEvent::AssistantText {
         ts: 8,

@@ -1,4 +1,6 @@
 use crate::expected::Expected;
+use regex::Regex;
+use serde_json::Value;
 use thiserror::Error;
 use wrily_rig::events::{ExitCode, WrilyEvent};
 
@@ -20,12 +22,20 @@ impl AssertionFailure {
 
 type ExpectedAssertion = fn(&[WrilyEvent], &Expected) -> Result<(), AssertionFailure>;
 
+/// Run every assertion against the events + expectations, collecting all
+/// failures (no early return) so a fixture report lists every divergence.
 pub fn run_all(events: &[WrilyEvent], expected: &Expected) -> Vec<AssertionFailure> {
     let checks: &[(&str, ExpectedAssertion)] = &[
         ("assert_exit_matches", assert_exit_matches),
         ("assert_findings_in_range", assert_findings_in_range),
-        ("assert_required_phrases", assert_required_phrases),
-        ("assert_no_forbidden_phrases", assert_no_forbidden_phrases),
+        ("assert_required_severities", assert_required_severities),
+        ("assert_required_paths", assert_required_paths),
+        ("assert_message_regex_matches", assert_message_regex_matches),
+        (
+            "assert_forbidden_message_regex",
+            assert_forbidden_message_regex,
+        ),
+        ("assert_single_json_fence", assert_single_json_fence),
         ("assert_token_budget", assert_token_budget),
         ("assert_duration", assert_duration),
     ];
@@ -70,7 +80,7 @@ pub fn assert_findings_in_range(
     events: &[WrilyEvent],
     expected: &Expected,
 ) -> Result<(), AssertionFailure> {
-    let count = count_findings(events);
+    let count = findings(events).len();
 
     if let Some(min) = expected.min_findings {
         if count < min {
@@ -93,36 +103,161 @@ pub fn assert_findings_in_range(
     Ok(())
 }
 
-pub fn assert_required_phrases(
+/// Every required severity appears on at least one finding (case-insensitive).
+pub fn assert_required_severities(
     events: &[WrilyEvent],
     expected: &Expected,
 ) -> Result<(), AssertionFailure> {
-    let texts = assistant_texts(events);
+    if expected.must_contain_severity.is_empty() {
+        return Ok(());
+    }
+    let findings = findings(events);
+    let severities: Vec<String> = findings
+        .iter()
+        .filter_map(|f| f.get("severity").and_then(Value::as_str))
+        .map(|s| s.to_lowercase())
+        .collect();
 
-    for phrase in &expected.must_contain_phrases {
-        if !texts.iter().any(|text| text.contains(phrase)) {
+    for want in &expected.must_contain_severity {
+        let want_lc = want.to_lowercase();
+        if !severities.contains(&want_lc) {
             return Err(AssertionFailure::new(
-                "assert_required_phrases",
-                format!("required phrase not found: {phrase:?}"),
+                "assert_required_severities",
+                format!("required severity {want:?} not found among findings (got {severities:?})"),
             ));
         }
     }
-
     Ok(())
 }
 
-pub fn assert_no_forbidden_phrases(
+/// Every `must_match_path` entry appears as a substring of some `finding.path`.
+pub fn assert_required_paths(
     events: &[WrilyEvent],
     expected: &Expected,
 ) -> Result<(), AssertionFailure> {
-    for text in assistant_texts(events) {
-        for phrase in &expected.must_not_contain_phrases {
-            if text.contains(phrase) {
-                return Err(AssertionFailure::new(
-                    "assert_no_forbidden_phrases",
-                    format!("forbidden phrase found: {phrase:?}"),
-                ));
-            }
+    if expected.must_match_path.is_empty() {
+        return Ok(());
+    }
+    let findings = findings(events);
+    let paths: Vec<&str> = findings
+        .iter()
+        .filter_map(|f| f.get("path").and_then(Value::as_str))
+        .collect();
+
+    for want in &expected.must_match_path {
+        if !paths.iter().any(|p| p.contains(want.as_str())) {
+            return Err(AssertionFailure::new(
+                "assert_required_paths",
+                format!("required path {want:?} not found among finding paths ({paths:?})"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Every `must_match_message_regex` matches at least one `finding.message`.
+pub fn assert_message_regex_matches(
+    events: &[WrilyEvent],
+    expected: &Expected,
+) -> Result<(), AssertionFailure> {
+    if expected.must_match_message_regex.is_empty() {
+        return Ok(());
+    }
+    let findings = findings(events);
+    let messages: Vec<&str> = findings
+        .iter()
+        .filter_map(|f| f.get("message").and_then(Value::as_str))
+        .collect();
+
+    for pattern in &expected.must_match_message_regex {
+        let re = compile(pattern, "assert_message_regex_matches")?;
+        if !messages.iter().any(|m| re.is_match(m)) {
+            return Err(AssertionFailure::new(
+                "assert_message_regex_matches",
+                format!("no finding.message matched required regex {pattern:?}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// No `forbid_match_message_regex` matches any `finding.message`.
+pub fn assert_forbidden_message_regex(
+    events: &[WrilyEvent],
+    expected: &Expected,
+) -> Result<(), AssertionFailure> {
+    if expected.forbid_match_message_regex.is_empty() {
+        return Ok(());
+    }
+    let findings = findings(events);
+    let messages: Vec<&str> = findings
+        .iter()
+        .filter_map(|f| f.get("message").and_then(Value::as_str))
+        .collect();
+
+    for pattern in &expected.forbid_match_message_regex {
+        let re = compile(pattern, "assert_forbidden_message_regex")?;
+        if let Some(hit) = messages.iter().find(|m| re.is_match(m)) {
+            return Err(AssertionFailure::new(
+                "assert_forbidden_message_regex",
+                format!("finding.message matched forbidden regex {pattern:?}: {hit:?}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// When required (default: `exit == "ok"`), the model output must be exactly one
+/// valid ```json fence, with no prose before or after it in the final
+/// assistant turn.
+pub fn assert_single_json_fence(
+    events: &[WrilyEvent],
+    expected: &Expected,
+) -> Result<(), AssertionFailure> {
+    if !expected.require_single_json_fence() {
+        return Ok(());
+    }
+
+    let texts = assistant_texts(events);
+    let total_fences: usize = texts
+        .iter()
+        .map(|t| extract_json_fence_bodies(t).len())
+        .sum();
+
+    if total_fences == 0 {
+        return Err(AssertionFailure::new(
+            "assert_single_json_fence",
+            "expected exactly one ```json fence in assistant output, found none",
+        ));
+    }
+    if total_fences > 1 {
+        return Err(AssertionFailure::new(
+            "assert_single_json_fence",
+            format!("expected exactly one ```json fence, found {total_fences}"),
+        ));
+    }
+
+    // The fence must parse as valid JSON.
+    let body = texts
+        .iter()
+        .flat_map(|t| extract_json_fence_bodies(t))
+        .next()
+        .unwrap_or_default();
+    if serde_json::from_str::<Value>(body).is_err() {
+        return Err(AssertionFailure::new(
+            "assert_single_json_fence",
+            "the ```json fence did not contain valid JSON",
+        ));
+    }
+
+    // No preamble/trailer: the terminal assistant turn must be exactly the fence.
+    if let Some(last) = texts.last() {
+        let trimmed = last.trim();
+        if !(trimmed.starts_with("```json") && trimmed.ends_with("```")) {
+            return Err(AssertionFailure::new(
+                "assert_single_json_fence",
+                "final assistant turn has prose outside the ```json fence",
+            ));
         }
     }
 
@@ -229,6 +364,11 @@ pub fn assert_tool_call_pairing(events: &[WrilyEvent]) -> Result<(), AssertionFa
     Ok(())
 }
 
+fn compile(pattern: &str, rule: &'static str) -> Result<Regex, AssertionFailure> {
+    Regex::new(pattern)
+        .map_err(|e| AssertionFailure::new(rule, format!("invalid regex {pattern:?}: {e}")))
+}
+
 fn terminal_result(events: &[WrilyEvent]) -> Option<&WrilyEvent> {
     events
         .iter()
@@ -260,20 +400,19 @@ fn assistant_texts(events: &[WrilyEvent]) -> Vec<&str> {
         .collect()
 }
 
-fn count_findings(events: &[WrilyEvent]) -> usize {
-    let mut last_count = None;
-
+/// Parse the findings array from the last valid ```json fence in assistant text.
+fn findings(events: &[WrilyEvent]) -> Vec<Value> {
+    let mut last: Vec<Value> = Vec::new();
     for text in assistant_texts(events) {
         for body in extract_json_fence_bodies(text) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
-                if let Some(findings) = value.get("findings").and_then(|f| f.as_array()) {
-                    last_count = Some(findings.len());
+            if let Ok(value) = serde_json::from_str::<Value>(body) {
+                if let Some(arr) = value.get("findings").and_then(|f| f.as_array()) {
+                    last = arr.clone();
                 }
             }
         }
     }
-
-    last_count.unwrap_or(0)
+    last
 }
 
 fn extract_json_fence_bodies(text: &str) -> Vec<&str> {

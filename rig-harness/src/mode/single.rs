@@ -140,6 +140,7 @@ pub async fn run_single(validated: Validated) -> ModeRunOutcome {
     let cancel = shared_token();
     let meter = Arc::new(TokenMeter::new(validated.max_tokens, cancel.clone()));
     let _watchdog = spawn_timeout_watchdog(cancel.clone(), validated.timeout_ms);
+    let _signal = crate::cancel::spawn_signal_handler(cancel.clone());
 
     let provider = match build_adapter(validated.provider.clone(), validated.model.clone()) {
         Ok(p) => p,

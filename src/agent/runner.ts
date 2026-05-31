@@ -5,6 +5,8 @@ export type AgentRunOptions = {
   workingDir: string;
   env: Record<string, string | undefined>;
   timeoutMs?: number;
+  /** Review mode for this run; overrides the runner's constructor default. */
+  mode?: 'single' | 'team';
 };
 
 export type AgentTokenUsage = {

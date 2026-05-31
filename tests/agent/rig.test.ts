@@ -12,6 +12,7 @@ vi.mock('node:child_process', () => ({
 import {
   AgentBudgetExceededError,
   AgentTimeoutError,
+  ConfigError,
 } from '../../src/agent/errors.js';
 import { RigRunner } from '../../src/agent/rig.js';
 
@@ -88,12 +89,43 @@ describe('RigRunner', () => {
     expect(result.stderr).toBe('');
     expect(result.exitCode).toBe(0);
     expect(result.durationMs).toBe(1500);
-    expect(result.tokenUsage).toEqual({
+    // Token counts come from the sidecar; USD is computed TS-side from them.
+    expect(result.tokenUsage).toMatchObject({
       inputTokens: 100,
       outputTokens: 50,
       cacheReadTokens: 10,
       cacheWriteTokens: 5,
     });
+    expect(result.tokenUsage?.costUsd).toBeGreaterThan(0);
+  });
+
+  it('passes --mode team through from run options', async () => {
+    const result = await runWithMockStdout(
+      (child) => {
+        emitStdout(child, [
+          JSON.stringify({ event: 'assistant_text', ts: 1, role: 'coordinator', text: '```json\n{"findings":[]}\n```' }),
+          JSON.stringify({
+            event: 'result',
+            ts: 2,
+            exit: 'ok',
+            total_input: 1,
+            total_output: 1,
+            total_cache_read: 0,
+            total_cache_write: 0,
+            duration_ms: 5,
+          }),
+          '',
+        ].join('\n'));
+        finishChild(child, 0);
+      },
+      { ...baseOpts, mode: 'team' },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const args = (spawnMock.mock.calls[0]?.[1] ?? []) as string[];
+    const modeIdx = args.indexOf('--mode');
+    expect(modeIdx).toBeGreaterThanOrEqual(0);
+    expect(args[modeIdx + 1]).toBe('team');
   });
 
   it('throws AgentBudgetExceededError when terminal exit is budget', async () => {
@@ -188,13 +220,69 @@ describe('RigRunner', () => {
     expect(result.tokenUsage?.inputTokens).toBe(3);
   });
 
-  it('throws a generic Error when exit code is non-zero without a terminal result', async () => {
+  it('throws ConfigError when a config error event is emitted', async () => {
     const promise = runWithMockStdout((child) => {
       child.stderr.emit('data', 'config error: bad workdir');
       emitStdout(child, JSON.stringify({ event: 'error', ts: 1, kind: 'config', message: 'bad workdir' }));
-      finishChild(child, 2);
+      finishChild(child, 4);
     });
 
-    await expect(promise).rejects.toThrow('wrily-rig exited with code 2: config error: bad workdir');
+    await expect(promise).rejects.toBeInstanceOf(ConfigError);
+    await expect(promise).rejects.toThrow('bad workdir');
+  });
+
+  it('throws ConfigError on a config terminal result', async () => {
+    const promise = runWithMockStdout((child) => {
+      emitStdout(child, [
+        JSON.stringify({ event: 'error', ts: 1, kind: 'config', message: 'unroutable model' }),
+        JSON.stringify({
+          event: 'result',
+          ts: 2,
+          exit: 'config',
+          total_input: 0,
+          total_output: 0,
+          total_cache_read: 0,
+          total_cache_write: 0,
+          duration_ms: 3,
+        }),
+        '',
+      ].join('\n'));
+      finishChild(child, 4);
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(ConfigError);
+  });
+
+  it('synthesizes AgentTimeoutError when the child exits without a terminal result', async () => {
+    const promise = runWithMockStdout((child) => {
+      child.stderr.emit('data', 'killed');
+      emitStdout(child, JSON.stringify({ event: 'assistant_text', ts: 1, role: 'assistant', text: 'partial' }));
+      finishChild(child, 1);
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(AgentTimeoutError);
+  });
+
+  it('throws a generic Error when the terminal result exit is error', async () => {
+    const promise = runWithMockStdout((child) => {
+      child.stderr.emit('data', 'provider 500');
+      emitStdout(child, [
+        JSON.stringify({ event: 'error', ts: 1, kind: 'provider', message: 'upstream 500' }),
+        JSON.stringify({
+          event: 'result',
+          ts: 2,
+          exit: 'error',
+          total_input: 0,
+          total_output: 0,
+          total_cache_read: 0,
+          total_cache_write: 0,
+          duration_ms: 5,
+        }),
+        '',
+      ].join('\n'));
+      finishChild(child, 1);
+    });
+
+    await expect(promise).rejects.toThrow('wrily-rig exited with code 1');
   });
 });

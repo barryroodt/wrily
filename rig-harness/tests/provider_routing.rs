@@ -84,13 +84,24 @@ fn build_adapter_gemini_requires_api_key() {
         .contains("GEMINI_API_KEY not set"));
 }
 
+/// Process-wide lock serializing env-mutating tests in this binary; env vars are
+/// global so the default multi-threaded runner otherwise races provider API-key
+/// vars between the `build_adapter_*_requires_api_key` tests. Held for the
+/// guard's lifetime.
+fn env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 struct EnvVarGuard {
     key: String,
     previous: Option<String>,
+    _lock: std::sync::MutexGuard<'static, ()>,
 }
 
 impl EnvVarGuard {
     fn set(key: &str, value: Option<&str>) -> Self {
+        let lock = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let previous = std::env::var(key).ok();
         match value {
             Some(value) => std::env::set_var(key, value),
@@ -99,6 +110,7 @@ impl EnvVarGuard {
         Self {
             key: key.to_string(),
             previous,
+            _lock: lock,
         }
     }
 }

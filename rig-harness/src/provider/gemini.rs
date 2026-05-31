@@ -9,6 +9,7 @@ use rig_core::{
 
 use crate::cli::Provider;
 
+use super::retry::{classify_error, with_retry, RetryConfig};
 use super::{
     rig_convert::chat_messages_to_rig, ChatMessage, ProviderAdapter, ProviderResponse,
     ToolCallRequest, ToolSchema,
@@ -58,6 +59,21 @@ impl ProviderAdapter for GeminiProvider {
     }
 
     async fn complete(
+        &self,
+        system: &str,
+        messages: &[ChatMessage],
+        tools: &[ToolSchema],
+    ) -> anyhow::Result<ProviderResponse> {
+        let config = RetryConfig::default();
+        with_retry(&config, classify_error, || {
+            Box::pin(self.complete_once(system, messages, tools))
+        })
+        .await
+    }
+}
+
+impl GeminiProvider {
+    async fn complete_once(
         &self,
         system: &str,
         messages: &[ChatMessage],

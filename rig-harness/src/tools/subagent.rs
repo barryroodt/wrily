@@ -1,9 +1,68 @@
 use crate::events::{now_ms, WrilyEvent};
+use crate::meter::TokenMeter;
 use crate::provider::{ChatMessage, ProviderAdapter};
 use crate::tools::ToolRegistry;
+use futures_util::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+const REVIEWER_MAX_TURNS: u32 = 5;
+
+/// Assemble a reviewer subagent's system prompt per ADR-0003 §3: security
+/// constraints, role focus, output-format contract, scoped-diff instruction,
+/// optional extra context, and CI context (plus the conventions override).
+fn build_reviewer_system_prompt(
+    base: &str,
+    role: &str,
+    diff_scope: &str,
+    extra_context: Option<&str>,
+) -> String {
+    let scope_clause = if diff_scope == "full" || diff_scope.is_empty() {
+        "git diff {{DIFF_RANGE}}".to_string()
+    } else {
+        format!("git diff {{{{DIFF_RANGE}}}} -- {diff_scope}")
+    };
+
+    let mut prompt = String::new();
+    prompt.push_str(base);
+    prompt.push_str(
+        "\n\n# Security Constraints\n\
+Read-only. git/cat/ls/find only. No tests, builds, linters, gh, or package installs.\n\n",
+    );
+    prompt.push_str(&format!(
+        "# {role} Reviewer\n\
+You are reviewing code changes in the \"{role}\" lane. Stay in your lane: style \u{2192} \
+conventions reviewer; spec gaps \u{2192} spec-compliance; cross-service contracts \u{2192} \
+contracts reviewer. Record cross-lane observations under \"Notes for Other Reviewers\" \
+only \u{2014} you cannot message peers directly.\n\n"
+    ));
+    prompt.push_str(&format!("## Scoped diff\nRun: {scope_clause}\n\n"));
+    if let Some(extra) = extra_context.filter(|s| !s.is_empty()) {
+        prompt.push_str(extra);
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str(
+        "# Reviewer Output Format\n\
+Final turn = markdown only, no JSON fence:\n\
+## [Reviewer Name] \u{2014} [Focus Area]\n\
+### Verdict: Ready to merge / With fixes / Not ready\n\
+### Issues\n#### Critical / Important / Minor\n\
+- `file:line` \u{2014} Description. **Why it matters:** ...\n\
+### Strengths\n### Notes for Other Reviewers\n\n",
+    );
+    prompt.push_str(
+        "# CI context\n\
+You are a teammate in an automated Wrily review. A cross-review digest will be \
+broadcast later; amend or withdraw findings in your follow-up report.",
+    );
+    if role.contains("conventions") {
+        prompt.push_str(
+            "\n\nOVERRIDE: static analysis against AGENTS.md only \u{2014} do NOT execute CI commands.",
+        );
+    }
+    prompt
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SpawnReviewerArgs {
@@ -53,6 +112,7 @@ impl ReviewerRoster {
         provider: Arc<dyn ProviderAdapter>,
         _registry: Arc<ToolRegistry>,
         system_template: String,
+        meter: Arc<TokenMeter>,
     ) -> Result<String, String> {
         let (msg_tx, mut msg_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (find_tx, find_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -68,22 +128,76 @@ impl ReviewerRoster {
         .emit();
 
         let reviewer_name = name.clone();
+        let cancel = meter.cancellation_token();
+        let reviewer_system = build_reviewer_system_prompt(
+            &system_template,
+            &args.role,
+            &args.diff_scope,
+            args.extra_context.as_deref(),
+        );
         tokio::spawn(async move {
-            // Per-reviewer agent loop — simplified: receive user messages, call provider, push findings.
-            let mut messages: Vec<ChatMessage> = Vec::new();
-            messages.push(ChatMessage::User(format!(
-                "Role: {role}\nDiff scope: {scope}\nReview using template: {template}\n{extra}",
+            // The first user turn keeps the "Role: " prefix so the coordinator's
+            // scope assignment is explicit in the reviewer's history.
+            let mut messages: Vec<ChatMessage> = vec![ChatMessage::User(format!(
+                "Role: {role}\nDiff scope: {scope}\nReview using template: {template}",
                 role = args.role,
                 scope = args.diff_scope,
                 template = args.template,
-                extra = args.extra_context.unwrap_or_default(),
-            )));
+            ))];
             let mut turn: u32 = 0;
+            let mut input_tokens: u64 = 0;
+            let mut output_tokens: u64 = 0;
+
             loop {
-                let resp = match provider.complete(&system_template, &messages, &[]).await {
-                    Ok(r) => r,
-                    Err(_) => break,
+                if cancel.is_cancelled() {
+                    break;
+                }
+
+                // Catch panics so a single reviewer cannot take down the run;
+                // surface them as `subagent_failed` (invariant #5).
+                let attempt = std::panic::AssertUnwindSafe(provider.complete(
+                    &reviewer_system,
+                    &messages,
+                    &[],
+                ))
+                .catch_unwind()
+                .await;
+
+                let resp = match attempt {
+                    Ok(Ok(resp)) => resp,
+                    Ok(Err(err)) => {
+                        let _ = WrilyEvent::SubagentFailed {
+                            ts: now_ms(),
+                            name: reviewer_name.clone(),
+                            reason: err.to_string(),
+                        }
+                        .emit();
+                        break;
+                    }
+                    Err(_panic) => {
+                        let _ = WrilyEvent::SubagentFailed {
+                            ts: now_ms(),
+                            name: reviewer_name.clone(),
+                            reason: "reviewer task panicked".into(),
+                        }
+                        .emit();
+                        break;
+                    }
                 };
+
+                // Invariant #4: every provider response feeds the shared meter,
+                // so reviewer tokens count against the run budget.
+                input_tokens += resp.input_tokens;
+                output_tokens += resp.output_tokens;
+                let tripped = meter
+                    .add(
+                        resp.input_tokens,
+                        resp.output_tokens,
+                        resp.cache_read,
+                        resp.cache_write,
+                    )
+                    .is_err();
+
                 if !resp.text.is_empty() {
                     let _ = find_tx.send(resp.text.clone());
                     let _ = WrilyEvent::AssistantText {
@@ -97,22 +211,27 @@ impl ReviewerRoster {
                     text: resp.text,
                     tool_calls: vec![],
                 });
+
+                if tripped || cancel.is_cancelled() {
+                    break;
+                }
+
                 turn += 1;
-                // Wait for next user message or exit.
                 match msg_rx.recv().await {
                     Some(next) => messages.push(ChatMessage::User(next)),
                     None => break,
                 }
-                if turn > 5 {
+                if turn >= REVIEWER_MAX_TURNS {
                     break;
                 }
             }
+
             let _ = WrilyEvent::SubagentDone {
                 ts: now_ms(),
                 name: reviewer_name,
                 turns: turn,
-                input_tokens: 0,
-                output_tokens: 0,
+                input_tokens,
+                output_tokens,
             }
             .emit();
         });

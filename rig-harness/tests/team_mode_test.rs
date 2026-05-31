@@ -143,6 +143,7 @@ async fn run_team_mode(
         roster.clone(),
         provider.clone(),
         "reviewer system".into(),
+        meter.clone(),
     );
 
     TeamMode {
@@ -338,6 +339,7 @@ async fn team_mode_budget_trip_during_reviewer_round() {
         roster.clone(),
         provider_for_registry,
         "reviewer system".into(),
+        meter.clone(),
     );
 
     let exit = TeamMode {

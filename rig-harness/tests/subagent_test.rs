@@ -3,12 +3,19 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tempfile::TempDir;
+use wrily_rig::cancel::shared_token;
 use wrily_rig::cli::Provider;
 use wrily_rig::emitter::TestEmitterGuard;
 use wrily_rig::events::WrilyEvent;
+use wrily_rig::meter::TokenMeter;
 use wrily_rig::provider::{ChatMessage, ProviderAdapter, ProviderResponse, ToolSchema};
 use wrily_rig::tools::subagent::ReviewerRoster;
 use wrily_rig::tools::ToolRegistry;
+
+/// A meter with effectively unbounded budget for tests that do not exercise the cap.
+fn test_meter() -> Arc<TokenMeter> {
+    Arc::new(TokenMeter::new(1_000_000, shared_token()))
+}
 
 struct RoleTextProvider {
     /// Maps role string -> list of responses (first round, second round, …).
@@ -100,6 +107,7 @@ async fn spawn_reviewer_adds_to_roster_and_emits_subagent_spawn() {
         roster.clone(),
         provider,
         "reviewer system".into(),
+        test_meter(),
     );
 
     let out = registry
@@ -140,6 +148,7 @@ async fn team_registry_exposes_nine_tools_single_mode_exposes_six() {
         roster,
         provider,
         "template".into(),
+        test_meter(),
     );
     assert_eq!(team.schemas().len(), 9);
     let schemas = team.schemas();
@@ -169,6 +178,7 @@ async fn broadcast_summary_delivers_to_all_spawned_reviewers() {
         roster.clone(),
         provider,
         "reviewer system".into(),
+        test_meter(),
     );
 
     registry
@@ -229,6 +239,7 @@ async fn collect_findings_drains_text_from_finished_reviewers_in_order() {
         roster.clone(),
         provider,
         "reviewer system".into(),
+        test_meter(),
     );
 
     registry
@@ -277,6 +288,7 @@ async fn partial_failure_one_reviewer_panics_broadcast_and_collect_still_work() 
         roster.clone(),
         provider,
         "reviewer system".into(),
+        test_meter(),
     );
 
     registry

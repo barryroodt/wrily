@@ -2,6 +2,7 @@ use super::{
     find_files, git_diff, list_files, read_file, shell, skill_load, subagent, ToolError, ToolOutput,
 };
 use crate::events::{now_ms, truncate_args, WrilyEvent};
+use crate::meter::TokenMeter;
 use crate::provider::{ProviderAdapter, ToolSchema};
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
@@ -10,6 +11,7 @@ struct TeamTools {
     roster: Arc<subagent::ReviewerRoster>,
     provider: Arc<dyn ProviderAdapter>,
     reviewer_system_template: String,
+    meter: Arc<TokenMeter>,
     registry: Weak<ToolRegistry>,
 }
 
@@ -33,6 +35,7 @@ impl ToolRegistry {
         roster: Arc<subagent::ReviewerRoster>,
         provider: Arc<dyn ProviderAdapter>,
         reviewer_system_template: String,
+        meter: Arc<TokenMeter>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| Self {
             workdir,
@@ -40,6 +43,7 @@ impl ToolRegistry {
                 roster,
                 provider,
                 reviewer_system_template,
+                meter,
                 registry: weak.clone(),
             }),
         })
@@ -237,6 +241,7 @@ impl ToolRegistry {
                         team.provider.clone(),
                         registry,
                         team.reviewer_system_template.clone(),
+                        team.meter.clone(),
                     )
                     .await
                     .map_err(ToolError::InvalidInput)?;

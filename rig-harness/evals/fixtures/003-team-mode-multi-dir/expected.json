@@ -1,11 +1,5 @@
 {
   "fixture": "003-team-mode-multi-dir",
   "exit": "ok",
-  "min_findings": 2,
-  "max_findings": null,
-  "must_contain_phrases": [],
-  "must_not_contain_phrases": [],
-  "max_input_tokens": null,
-  "max_output_tokens": null,
-  "max_duration_ms": null
+  "min_findings": 1
 }

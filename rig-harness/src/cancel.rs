@@ -23,3 +23,35 @@ pub fn spawn_timeout_watchdog(
 pub fn shared_token() -> CancellationToken {
     CancellationToken::new()
 }
+
+/// Spawn a handler that cancels `token` on SIGTERM (and SIGINT). The run loop
+/// observes the cancellation and, when the budget meter has not tripped, exits
+/// as a timeout (`result{exit:"timeout"}`, code 3) per the spec's shutdown
+/// contract. Returns the JoinHandle so callers can drop it on clean shutdown.
+#[cfg(unix)]
+pub fn spawn_signal_handler(token: CancellationToken) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = match signal(SignalKind::terminate()) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let mut intr = match signal(SignalKind::interrupt()) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        tokio::select! {
+            _ = term.recv() => token.cancel(),
+            _ = intr.recv() => token.cancel(),
+            _ = token.cancelled() => {}
+        }
+    })
+}
+
+/// Non-unix fallback: no signal handling; the watchdog still bounds the run.
+#[cfg(not(unix))]
+pub fn spawn_signal_handler(token: CancellationToken) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let _ = token;
+    })
+}

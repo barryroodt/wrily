@@ -1,3 +1,4 @@
+use super::truncate::truncated_output;
 use super::{ToolError, ToolOutput};
 use crate::skills::SkillLoader;
 use serde::{Deserialize, Serialize};
@@ -8,7 +9,13 @@ pub struct SkillLoadArgs {
     pub name: String,
 }
 
-/// Lazy skill_load: workdir-only resolution. No bundled fallback (per ADR-0002).
+/// Lazy skill_load: workdir-only resolution (no bundled fallback, per ADR-0002).
+///
+/// Distinguishes a missing skill (`InvalidInput "skill not found"`) from a
+/// symlink that escapes the workdir (`OutsideWorkdir`). The wrapped output is
+/// bounded by the shared 256 KiB truncation cap — truncating the body *before*
+/// wrapping so the `<skill>` envelope always closes even when a large
+/// `SKILL.md` is cut at the boundary.
 pub async fn skill_load(workdir: &Path, args: SkillLoadArgs) -> Result<ToolOutput, ToolError> {
     if !SkillLoader::valid_name(&args.name) {
         return Err(ToolError::InvalidInput(format!(
@@ -29,11 +36,13 @@ pub async fn skill_load(workdir: &Path, args: SkillLoadArgs) -> Result<ToolOutpu
         return Err(ToolError::OutsideWorkdir(args.name.clone()));
     }
     let content = tokio::fs::read_to_string(&canonical).await?;
-    let wrapped = format!("<skill name=\"{}\">\n{}\n</skill>", args.name, content);
+    // Truncate first, then wrap, so the envelope always closes.
+    let body = truncated_output(content);
+    let wrapped = format!("<skill name=\"{}\">\n{}\n</skill>", args.name, body.content);
     let bytes = wrapped.len();
     Ok(ToolOutput {
         content: wrapped,
         bytes,
-        truncated: false,
+        truncated: body.truncated,
     })
 }

@@ -72,16 +72,18 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 
 ## Post-v1 rig-harness follow-ups
 
-Deferred after the [`claude -p` → `wrily-rig` cutover](https://github.com/barryroodt/wrily/pull/28) (spec: `solo://proj/11/scratchpad/rig-harness-replace--1`, plan: `solo://proj/11/scratchpad/rig-harness-implemen--2`):
+Deferred until after the [`claude -p` → `wrily-rig` cutover](https://github.com/barryroodt/wrily/pull/28) lands (PR #28 is **still open / under review** — see review blockers below; spec: `solo://proj/11/scratchpad/rig-harness-replace--1`, plan: `solo://proj/11/scratchpad/rig-harness-implemen--2`):
 
 - **MCP support** — deferred per rig-harness invariant #8 (no MCP in v1). Revisit once native tools + shell allowlist prove insufficient.
 - **LLM-judge evaluations** — Phase 7+ future work; fixture runner + assertions exist, but automated judge scoring is not in v1 scope.
 - **Multi-provider matrix expansion** — v1 covers anthropic / openai / gemini / cursor; add providers (e.g. Bedrock, Azure, local) as demand appears.
 - **Cumulative-spend dashboard** — per-review `max_budget_usd` caps exist; org-wide Anthropic spend visibility is still missing (see Operational gaps below).
 
-## Closed / done (kept for context)
+## In review (not yet merged)
 
-- ✅ Replace `claude -p` subprocess with `wrily-rig` sidecar — hard cutover to `RigRunner` ([#28](https://github.com/barryroodt/wrily/pull/28); spec `solo://proj/11/scratchpad/rig-harness-replace--1`, plan `solo://proj/11/scratchpad/rig-harness-implemen--2`).
+- ⏳ Replace `claude -p` subprocess with `wrily-rig` sidecar — hard cutover to `RigRunner` ([#28](https://github.com/barryroodt/wrily/pull/28), OPEN). Spec-conformance review 2026-05-29 found blockers (eval runner has no `[[bin]]`; evals not wired into CI; provider retry/429/backoff + SIGTERM + `costs.ts` missing; `skill_load` skips 256 KiB truncation; team-mode reviewers bypass TokenMeter; `cargo test` flaky in parallel). All 9 phases have real code, but core behaviors are stubbed — **do not mark done until merged**. Spec `solo://proj/11/scratchpad/rig-harness-replace--1`, plan `solo://proj/11/scratchpad/rig-harness-implemen--2`.
+
+## Closed / done (kept for context)
 - ✅ Public release (`feat: Initial release`).
 - ✅ Legacy reference scrub (caveman branding removed, metal-standards example replaced).
 - ✅ SECURITY.md, Dependabot config, Contributing section, gitleaks allowlist.
