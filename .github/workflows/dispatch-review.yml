@@ -110,9 +110,8 @@ jobs:
           PR_NUMBER: ${{ github.event.client_payload.pr_number }}
           COMMIT_SHA: ${{ github.event.client_payload.head_sha }}
           BASE_BRANCH: ${{ github.event.client_payload.base_ref }}
-          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
           # Optional overrides — receivers can set any of these on the dispatch payload.
-          MODEL: ${{ github.event.client_payload.model || 'opus' }}
+          MODEL: ${{ github.event.client_payload.model || 'anthropic/claude-opus-4-8' }}
           MODE: ${{ github.event.client_payload.mode || 'auto' }}
           MAX_BUDGET: ${{ github.event.client_payload.max_budget || '' }}
           DRY_RUN: ${{ github.event.client_payload.dry_run || 'false' }}

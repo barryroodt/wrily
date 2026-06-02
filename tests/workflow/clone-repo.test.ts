@@ -25,9 +25,7 @@ const emptyDigestPage = {
 };
 
 const baseEnv = {
-  authMethod: 'oauth' as const,
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'sk-ant-oat01-x',
   githubToken: 'gho_test',
   prNumber: 42,
   githubRepository: 'org/repo',

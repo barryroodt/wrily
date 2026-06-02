@@ -36,10 +36,15 @@ export type WorkflowState = {
 
   // After renderPrompt
   renderedPrompt?: string;
-  renderedPromptsByAgent?: string[];
 
   // After agentCall
   agentResults?: AgentResult[];
+  /**
+   * Index into `agentResults` of the result whose JSON fence holds the final,
+   * postable review. Single mode: 0. Team mode: the unify result (last index);
+   * the preceding entries are individual reviewer outputs consumed by unify.
+   */
+  findingsSourceIndex?: number;
 
   // After extractFindings
   reviews?: Review[];

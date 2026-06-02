@@ -23,7 +23,7 @@ When you push a commit to a PR:
 Wrily reads `.wrily.yml` from the root of your repo. All keys optional — defaults work for most repos.
 
 ```yaml
-model: opus               # opus (default) | sonnet | haiku
+model: anthropic/claude-opus-4-8  # provider/model slug (default); any pi provider, e.g. openai/gpt-4o
 mode: auto                # auto (default) | single | team
 team_threshold: 5         # auto-flips to team mode at this many files/folders
 team_threshold_unit: files # files (default) | folders

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { renderReviewPrompt } from '../../src/prompt/render.js';
-import type { PromptContext } from '../../src/prompt/render.js';
+import { renderReviewPrompt, renderUnifyPrompt } from '../../src/prompt/render.js';
+import type { PromptContext, UnifyPromptContext } from '../../src/prompt/render.js';
 
 const baseCtx: PromptContext = {
   prNumber: 42,
@@ -17,11 +17,10 @@ const baseCtx: PromptContext = {
   priorFeedbackInstruction: '',
   triggerContextInstruction: '',
   reviewTypeNote: 'Full review.',
-  reviewMode: 'single',
 };
 
 describe('renderReviewPrompt', () => {
-  it('substitutes all placeholders for single mode', () => {
+  it('substitutes all placeholders and leaves none unfilled', () => {
     const out = renderReviewPrompt(baseCtx);
     expect(out).toContain('PR #42');
     expect(out).toContain('org/repo');
@@ -30,15 +29,28 @@ describe('renderReviewPrompt', () => {
     expect(out).toContain('Full review.');
     expect(out).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });
+});
 
-  it('uses team template for team mode', () => {
-    const out = renderReviewPrompt({ ...baseCtx, reviewMode: 'team' });
-    expect(out).toMatch(/team lead|review team|coordinating a team/i);
+describe('renderUnifyPrompt', () => {
+  const unifyCtx: UnifyPromptContext = {
+    prNumber: 7,
+    githubRepository: 'org/repo',
+    reviewerCount: 3,
+    reviewerReports: '### Reviewer 1: correctness\n\n```json\n{"findings":[]}\n```',
+    styleInstruction: '## Style: Terse',
+    sensitivityInstruction: '',
+    deltaCleanInstruction: '',
+    resolveThreadsInstruction: '',
+    confidenceInstruction: '',
+    reviewTypeNote: 'Full review.',
+  };
+
+  it('embeds reviewer reports and the merge instruction, leaving no placeholders', () => {
+    const out = renderUnifyPrompt(unifyCtx);
+    expect(out).toContain('PR #7');
+    expect(out).toContain('### Reviewer 1: correctness');
+    expect(out).toContain('3 independent reviewer reports');
+    expect(out).toMatch(/consolidat|unif|merge/i);
     expect(out).not.toMatch(/\{\{[A-Z_]+\}\}/);
-  });
-
-  it('throws on unsubstituted placeholder (defensive)', () => {
-    const broken = { ...baseCtx, prNumber: undefined as any };
-    expect(() => renderReviewPrompt(broken)).toThrow();
   });
 });

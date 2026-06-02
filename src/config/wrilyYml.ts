@@ -4,7 +4,7 @@ import type { WrilyConfig, RuntimeEnv } from './types.js';
 import { isValidSharedSkillName } from '../skills/names.js';
 
 const schema = z.object({
-  model: z.string().default('opus'),
+  model: z.string().default('anthropic/claude-opus-4-8'),
   mode: z.enum(['auto', 'single', 'team']).default('auto'),
   team_threshold: z.number().int().positive().default(5),
   team_threshold_unit: z

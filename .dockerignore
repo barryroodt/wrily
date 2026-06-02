@@ -14,3 +14,5 @@ docker-compose.yml
 *.log
 .env
 .env.*
+# Abandoned rig-harness Rust sidecar (not part of the build; large target/ dir).
+rig-harness

@@ -1,11 +1,17 @@
 import { z } from 'zod';
 import type { RuntimeEnv } from './types.js';
+import { hasAnyProviderKey, PROVIDER_API_KEY_ENV_VARS } from './providers.js';
 
 const rawEnvSchema = z.object({
   // Allow empty string (common in .env files) — parseEnv() checks that at
   // least one auth source is non-empty after parsing.
   ANTHROPIC_API_KEY: z.string().optional(),
-  CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  GOOGLE_CLOUD_API_KEY: z.string().optional(),
+  MISTRAL_API_KEY: z.string().optional(),
+  AZURE_OPENAI_API_KEY: z.string().optional(),
+  CLOUDFLARE_API_KEY: z.string().optional(),
   GITHUB_TOKEN: z.string().min(1, 'GITHUB_TOKEN is required'),
   PR_NUMBER: z.string().regex(/^[1-9]\d*$/, 'PR_NUMBER must be a positive integer'),
   GITHUB_REPOSITORY: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}\/[A-Za-z0-9._-]{1,100}$/, 'GITHUB_REPOSITORY must be "owner/repo"'),
@@ -69,13 +75,12 @@ const rawEnvSchema = z.object({
 export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   const parsed = rawEnvSchema.parse(raw);
 
-  if (!parsed.ANTHROPIC_API_KEY && !parsed.CLAUDE_CODE_OAUTH_TOKEN) {
+  if (!hasAnyProviderKey(raw)) {
     throw new Error(
-      'No authentication configured. Set one of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.',
+      'No provider API key configured. Set at least one of ' +
+        `${PROVIDER_API_KEY_ENV_VARS.join(', ')} (or AWS credentials for Amazon Bedrock).`,
     );
   }
-
-  const authMethod = parsed.CLAUDE_CODE_OAUTH_TOKEN ? 'oauth' : 'api_key';
 
   const supabaseUrl = parsed.SUPABASE_URL;
   const supabaseKey = parsed.SUPABASE_SERVICE_ROLE_KEY;
@@ -91,9 +96,13 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     : null;
 
   return {
-    authMethod,
-    anthropicApiKey: authMethod === 'oauth' ? null : (parsed.ANTHROPIC_API_KEY ?? null),
-    claudeCodeOauthToken: authMethod === 'oauth' ? (parsed.CLAUDE_CODE_OAUTH_TOKEN ?? null) : null,
+    anthropicApiKey: parsed.ANTHROPIC_API_KEY ?? null,
+    openaiApiKey: parsed.OPENAI_API_KEY ?? null,
+    geminiApiKey: parsed.GEMINI_API_KEY ?? null,
+    googleCloudApiKey: parsed.GOOGLE_CLOUD_API_KEY ?? null,
+    mistralApiKey: parsed.MISTRAL_API_KEY ?? null,
+    azureOpenaiApiKey: parsed.AZURE_OPENAI_API_KEY ?? null,
+    cloudflareApiKey: parsed.CLOUDFLARE_API_KEY ?? null,
     githubToken: parsed.GITHUB_TOKEN,
     prNumber: Number.parseInt(parsed.PR_NUMBER, 10),
     githubRepository: parsed.GITHUB_REPOSITORY,

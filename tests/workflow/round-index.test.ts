@@ -28,9 +28,7 @@ const emptyDigestPage = digestPageWithReviews([]);
 
 function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
   return {
-    authMethod: 'oauth',
     anthropicApiKey: null,
-    claudeCodeOauthToken: 'sk-ant-oat01-x',
     githubToken: 'gho_x',
     prNumber: 1,
     githubRepository: 'org/repo',
