@@ -1,4 +1,8 @@
+# Local env / secrets (never commit). .env.example is the tracked template.
 .env
+.env.*
+!.env.example
+.envrc
 .worktrees/
 
 # Build artifacts

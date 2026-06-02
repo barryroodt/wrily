@@ -58,6 +58,14 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/provider API key/i);
   });
 
+  it('accepts AWS credentials (Amazon Bedrock) as the sole auth, no API key needed', () => {
+    for (const awsVar of ['AWS_ACCESS_KEY_ID', 'AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK']) {
+      const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [awsVar]: 'x' });
+      expect(env.anthropicApiKey).toBeNull();
+      expect(env.prNumber).toBe(42);
+    }
+  });
+
   it('throws when GITHUB_TOKEN is missing', () => {
     expect(() => parseEnv({ ...minimal, GITHUB_TOKEN: undefined })).toThrow(/GITHUB_TOKEN/);
   });

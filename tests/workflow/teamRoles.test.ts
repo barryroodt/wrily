@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { composeTeam, loadRolePrompt, type TeamRole } from '../../src/workflow/teamRoles.js';
+import {
+  composeTeam,
+  loadRolePrompt,
+  buildReviewerSystemPrompt,
+  type TeamRole,
+} from '../../src/workflow/teamRoles.js';
 
 describe('composeTeam', () => {
   it('always includes the base trio in order', () => {
@@ -55,5 +60,23 @@ describe('loadRolePrompt', () => {
 
   it('loads the correctness reviewer persona', () => {
     expect(loadRolePrompt('correctness')).toMatch(/correctness/i);
+  });
+});
+
+describe('buildReviewerSystemPrompt', () => {
+  it('prepends the read-only + JSON-output guard to the role brief', () => {
+    const sp = buildReviewerSystemPrompt('correctness');
+    expect(sp).toContain('READ-ONLY');
+    expect(sp).toMatch(/Do NOT execute any command/i);
+    expect(sp).toMatch(/one ```json fenced block/);
+    expect(sp).toMatch(/correctness/i); // role brief still included
+  });
+
+  it('places the no-run-commands guard BEFORE the conventions Run-CI mandate so it overrides', () => {
+    const sp = buildReviewerSystemPrompt('conventions');
+    const guardIdx = sp.indexOf('Do NOT execute any command');
+    const runCiIdx = sp.search(/Run CI|execute the CI commands/i);
+    expect(guardIdx).toBeGreaterThanOrEqual(0);
+    expect(runCiIdx).toBeGreaterThan(guardIdx);
   });
 });

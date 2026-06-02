@@ -14,14 +14,17 @@ import { resolveModel } from './modelResolver.js';
 import { PROVIDER_API_KEY_ENV } from '../config/providers.js';
 
 /**
- * Team mode fans out N reviewer sessions in parallel plus a unify pass; a
- * substantial review can still run many minutes per session. Single mode is
- * typically faster. Each `run()` gets its own timeout. Override the default via
- * the `WRILY_AGENT_TIMEOUT_MS` env var, or per call via `AgentRunOptions.timeoutMs`.
+ * Per-`run()` timeout. Kept BELOW the CI job ceiling (workflows set
+ * `timeout-minutes: 30`) so a hung session aborts and raises
+ * AgentTimeoutError — letting the workflow post a timeout failure comment —
+ * before GitHub hard-kills the container. Team mode runs two sequential phases
+ * (reviewers in parallel, then unify), each capped at this value, so 12m keeps
+ * the worst case (~24m + overhead) under the 30m job ceiling. Override via the
+ * `WRILY_AGENT_TIMEOUT_MS` env var, or per call via `AgentRunOptions.timeoutMs`.
  */
 const DEFAULT_TIMEOUT_MS = (() => {
   const fromEnv = Number.parseInt(process.env.WRILY_AGENT_TIMEOUT_MS ?? '', 10);
-  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 30 * 60 * 1000;
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 12 * 60 * 1000;
 })();
 
 /**

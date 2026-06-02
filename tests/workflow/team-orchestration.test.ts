@@ -203,4 +203,30 @@ describe('workflow / team orchestration', () => {
     const expected = Array.from({ length: ROSTER.length + 1 }, (_, i) => `team-${i}`);
     expect(roles).toEqual(expected);
   });
+
+  it('drops a failed reviewer and still unifies the survivors (allSettled)', async () => {
+    // One reviewer (index 2) throws; the rest + unify succeed.
+    const responses: Array<AgentResult | Error> = ROSTER.map((_, i) =>
+      i === 2 ? new Error('provider 5xx') : res(fence(`REVIEWER-${i}`)),
+    );
+    responses.push(res(fence('UNIFIED')));
+    const runner = new SequenceFakeAgentRunner(responses);
+    const final = await runTeam(runner, baseEnv(), DIFF);
+
+    // All reviewers attempted (allSettled) + unify still runs.
+    expect(runner.calls.length).toBe(ROSTER.length + 1);
+    expect(final.findings?.[0]?.message).toBe('UNIFIED');
+    // The unify prompt includes survivors but not the dropped reviewer's output.
+    const unifyPrompt = runner.calls[ROSTER.length]?.prompt ?? '';
+    expect(unifyPrompt).toContain('REVIEWER-0');
+    expect(unifyPrompt).not.toContain('REVIEWER-2');
+  });
+
+  it('fails the review only when every reviewer fails', async () => {
+    const responses: Array<AgentResult | Error> = ROSTER.map(() => new Error('all providers down'));
+    const runner = new SequenceFakeAgentRunner(responses);
+    await expect(runTeam(runner, baseEnv(), DIFF)).rejects.toThrow(/all providers down|reviewers failed/);
+    // Unify is never attempted when no reviewer survives.
+    expect(runner.calls.length).toBe(ROSTER.length);
+  });
 });

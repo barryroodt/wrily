@@ -32,7 +32,7 @@ import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
-import { composeTeam, loadRolePrompt } from './teamRoles.js';
+import { composeTeam, buildReviewerSystemPrompt, type TeamRole } from './teamRoles.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -444,14 +444,16 @@ export function makeSteps(deps: WorkflowDeps) {
         const roles = composeTeam(state.diffFiles ?? []);
         const perCallBudget = totalBudget / (roles.length + 1);
 
-        // Compose → fan out reviewers in parallel (the await is the barrier).
-        // Each reviewer reuses the base review body and layers its role persona
-        // via systemPrompt.
-        const reviewerResults = await Promise.all(
+        // Compose → fan out reviewers in parallel; the await is the barrier.
+        // allSettled (not all): one reviewer failing (provider 5xx, its budget
+        // slice, a timeout) drops just that reviewer instead of discarding the
+        // whole review. Each reviewer reuses the base review body plus a role
+        // persona wrapped in read-only/output guards via systemPrompt.
+        const settled = await Promise.allSettled(
           roles.map((role) =>
             deps.agentRunner.run({
               prompt: basePrompt,
-              systemPrompt: loadRolePrompt(role),
+              systemPrompt: buildReviewerSystemPrompt(role),
               model: state.cfg.model,
               maxBudgetUsd: perCallBudget,
               workingDir,
@@ -460,8 +462,28 @@ export function makeSteps(deps: WorkflowDeps) {
           ),
         );
 
+        const reviewerResults: AgentResult[] = [];
+        const survivingRoles: TeamRole[] = [];
+        for (const [i, outcome] of settled.entries()) {
+          const role = roles[i]!;
+          if (outcome.status === 'fulfilled') {
+            reviewerResults.push(outcome.value);
+            survivingRoles.push(role);
+          } else {
+            const reason = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+            console.warn(`[agentCall] reviewer "${role}" failed, dropping from unify: ${reason}`);
+          }
+        }
+
+        // Nothing survived → surface the first failure (preserves
+        // AgentTimeoutError/AgentBudgetExceededError typing for the failure path).
+        if (reviewerResults.length === 0) {
+          const rejected = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected');
+          throw rejected ? rejected.reason : new Error('all team reviewers failed');
+        }
+
         const reviewerReports = reviewerResults
-          .map((r, i) => `### Reviewer ${i + 1}: ${roles[i] ?? 'reviewer'}\n\n${r.stdout}`)
+          .map((r, i) => `### Reviewer ${i + 1}: ${survivingRoles[i] ?? 'reviewer'}\n\n${r.stdout}`)
           .join('\n\n');
 
         // Unify: one merge pass that emits the final, postable JSON fence.
@@ -469,7 +491,7 @@ export function makeSteps(deps: WorkflowDeps) {
           prompt: renderUnifyPrompt({
             prNumber: state.env.prNumber,
             githubRepository: state.env.githubRepository,
-            reviewerCount: roles.length,
+            reviewerCount: reviewerResults.length,
             reviewerReports,
             styleInstruction: styleInstruction(state.cfg.style),
             sensitivityInstruction: sensitivityInstruction(state.cfg.sensitivity),

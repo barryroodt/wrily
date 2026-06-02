@@ -32,12 +32,47 @@ export const PROVIDER_API_KEY_ENV_VARS: readonly string[] = [
 ];
 
 /**
- * True when at least one recognized provider API-key env var is present and
- * non-empty in `env`. Bedrock-only (ambient AWS) auth is not detectable here.
+ * AWS credential env vars that let pi authenticate Amazon Bedrock ambiently
+ * (explicit keys, named profile, bedrock bearer token, or CI OIDC / task-role
+ * setups). Bedrock auth can also come from `~/.aws/credentials` or EC2 IMDS with
+ * no env var at all — those cases are not detectable here and a user can set
+ * `AWS_PROFILE` to pass the gate.
  */
-export function hasAnyProviderKey(env: Record<string, string | undefined>): boolean {
-  return PROVIDER_API_KEY_ENV_VARS.some((name) => {
+export const AWS_CREDENTIAL_ENV_VARS: readonly string[] = [
+  'AWS_ACCESS_KEY_ID',
+  'AWS_PROFILE',
+  'AWS_BEARER_TOKEN_BEDROCK',
+  'AWS_ROLE_ARN',
+  'AWS_WEB_IDENTITY_TOKEN_FILE',
+  'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI',
+];
+
+function anyEnvSet(env: Record<string, string | undefined>, names: readonly string[]): boolean {
+  return names.some((name) => {
     const value = env[name];
     return typeof value === 'string' && value.length > 0;
   });
+}
+
+/**
+ * True when at least one recognized provider API-key env var is present and
+ * non-empty in `env`. Bedrock-only (ambient AWS) auth is not covered — use
+ * {@link hasAnyProviderAuth} for the full auth gate.
+ */
+export function hasAnyProviderKey(env: Record<string, string | undefined>): boolean {
+  return anyEnvSet(env, PROVIDER_API_KEY_ENV_VARS);
+}
+
+/** True when `env` carries AWS credentials that can drive Amazon Bedrock. */
+export function hasBedrockAuth(env: Record<string, string | undefined>): boolean {
+  return anyEnvSet(env, AWS_CREDENTIAL_ENV_VARS);
+}
+
+/**
+ * True when any usable provider credential is configured — a provider API key
+ * or AWS credentials for Bedrock. Backs the env auth gate so the gate's error
+ * message (which mentions Bedrock) matches what it actually accepts.
+ */
+export function hasAnyProviderAuth(env: Record<string, string | undefined>): boolean {
+  return hasAnyProviderKey(env) || hasBedrockAuth(env);
 }

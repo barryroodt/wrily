@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RuntimeEnv } from './types.js';
-import { hasAnyProviderKey, PROVIDER_API_KEY_ENV_VARS } from './providers.js';
+import { hasAnyProviderAuth, PROVIDER_API_KEY_ENV_VARS } from './providers.js';
 
 const rawEnvSchema = z.object({
   // Allow empty string (common in .env files) — parseEnv() checks that at
@@ -75,7 +75,7 @@ const rawEnvSchema = z.object({
 export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   const parsed = rawEnvSchema.parse(raw);
 
-  if (!hasAnyProviderKey(raw)) {
+  if (!hasAnyProviderAuth(raw)) {
     throw new Error(
       'No provider API key configured. Set at least one of ' +
         `${PROVIDER_API_KEY_ENV_VARS.join(', ')} (or AWS credentials for Amazon Bedrock).`,

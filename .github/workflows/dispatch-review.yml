@@ -25,7 +25,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: anthropic
     container:
       # Internal release channel. See review.yml for why this remains the v1

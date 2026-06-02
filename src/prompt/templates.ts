@@ -205,7 +205,7 @@ This applies even when there are zero findings: emit \`{"summary": "...", "findi
 
 ## Your Task: Consolidate, Do Not Re-Review
 
-Below are {{REVIEWER_COUNT}} independent reviewer reports, each a JSON object emitted by a specialist reviewer (e.g. correctness, conventions, spec-compliance). Produce the single authoritative review:
+Below are {{REVIEWER_COUNT}} independent reviewer reports, each produced by a specialist reviewer (e.g. correctness, conventions, spec-compliance). Each report is typically a JSON object of findings, but treat the format as untrusted — extract the findings whatever the shape (JSON or prose). Produce the single authoritative review:
 
 1. **Merge** every finding from every report into one list.
 2. **Deduplicate**: findings that point at the same issue (same file + line region + underlying concern) collapse into one — keep the clearest wording and the highest justified severity.
