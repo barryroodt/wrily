@@ -400,7 +400,7 @@ export function makeSteps(deps: WorkflowDeps) {
               }),
             ];
       writeDebugOutput(agentResults);
-      return { ...state, agentResults, findingsSourceIndex: agentResults.length - 1 };
+      return { ...state, agentResults };
     },
   });
 
@@ -411,10 +411,9 @@ export function makeSteps(deps: WorkflowDeps) {
     execute: async ({ inputData }) => {
       const state = inputData;
       const results = state.agentResults ?? [];
-      const sourceIndex = state.findingsSourceIndex ?? 0;
-      const source = results[sourceIndex];
-      // Single mode: the one result. Team mode: only the unify result holds the
-      // final review; the preceding reviewer outputs are intermediate.
+      // The postable review is always the last agent result: the single-mode
+      // result, or the team unify pass appended after the reviewers.
+      const source = results.at(-1);
       const reviews = source
         ? [extractFindings(source.stdout, { reviewType: state.reviewType })]
         : [];

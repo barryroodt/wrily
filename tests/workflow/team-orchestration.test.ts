@@ -124,7 +124,7 @@ describe('workflow / team orchestration', () => {
     }
     // The trailing unify call has no role persona.
     expect(runner.calls[ROSTER.length]?.systemPrompt).toBeUndefined();
-    expect(final.findingsSourceIndex).toBe(ROSTER.length);
+    expect(final.agentResults).toHaveLength(ROSTER.length + 1);
   });
 
   it('extracts findings ONLY from the unify result, not the reviewers', async () => {
