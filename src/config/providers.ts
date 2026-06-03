@@ -38,7 +38,7 @@ export const PROVIDER_API_KEY_ENV_VARS: readonly string[] = [
  * no env var at all — those cases are not detectable here and a user can set
  * `AWS_PROFILE` to pass the gate.
  */
-export const AWS_CREDENTIAL_ENV_VARS: readonly string[] = [
+const AWS_CREDENTIAL_ENV_VARS: readonly string[] = [
   'AWS_ACCESS_KEY_ID',
   'AWS_PROFILE',
   'AWS_BEARER_TOKEN_BEDROCK',
@@ -59,12 +59,12 @@ function anyEnvSet(env: Record<string, string | undefined>, names: readonly stri
  * non-empty in `env`. Bedrock-only (ambient AWS) auth is not covered — use
  * {@link hasAnyProviderAuth} for the full auth gate.
  */
-export function hasAnyProviderKey(env: Record<string, string | undefined>): boolean {
+function hasAnyProviderKey(env: Record<string, string | undefined>): boolean {
   return anyEnvSet(env, PROVIDER_API_KEY_ENV_VARS);
 }
 
 /** True when `env` carries AWS credentials that can drive Amazon Bedrock. */
-export function hasBedrockAuth(env: Record<string, string | undefined>): boolean {
+function hasBedrockAuth(env: Record<string, string | undefined>): boolean {
   return anyEnvSet(env, AWS_CREDENTIAL_ENV_VARS);
 }
 
