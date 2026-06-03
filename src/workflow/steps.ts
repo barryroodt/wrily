@@ -10,19 +10,10 @@ import { applyEnvOverrides, parseWrilyYml } from '../config/wrilyYml.js';
 import { fetchPriorFeedbackDigest } from '../post/digest.js';
 import { extractFindings } from '../post/extract.js';
 import { routeFindings } from '../post/route.js';
-import { renderReviewPrompt, renderUnifyPrompt } from '../prompt/render.js';
+import { renderReviewPrompt } from '../prompt/render.js';
 import { buildCloneUrl } from '../git/clone.js';
 import { bridgeSkills } from '../skills/loader.js';
 import { isValidSharedSkillName } from '../skills/names.js';
-import {
-  styleInstruction,
-  sensitivityInstruction,
-  deltaCleanInstruction,
-  resolveThreadsInstruction,
-  confidenceInstruction,
-  priorFeedbackInstruction,
-  triggerContextInstruction,
-} from '../prompt/instructions.js';
 import { computeDiffRange, countTeamThresholdScope, applyIgnorePatterns, computeDiffFiles } from '../git/diff.js';
 import { resolveAddressedThreads } from '../post/resolveThreads.js';
 import { postReview, replyInThread } from '../post/github.js';
@@ -32,7 +23,8 @@ import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
-import { composeTeam, buildReviewerSystemPrompt, type TeamRole } from './teamRoles.js';
+import { buildReviewPromptContext } from './reviewContext.js';
+import { runTeamReview } from './teamReview.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -385,46 +377,7 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const diffFiles = state.diffFiles ?? [];
-      const diffPathFilter = diffFiles.length > 0 ? ` -- ${diffFiles.join(' ')}` : '';
-      const diffCommandInstruction = state.reviewType === 'delta'
-        ? [
-          'This is a DELTA review — only review changes the author made since the last reviewed commit.',
-          '',
-          '```bash',
-          `git diff ${state.diffRange}${diffPathFilter}`,
-          '```',
-        ].join('\n')
-        : [
-          'Get the full diff of this PR:',
-          '',
-          '```bash',
-          `git diff ${state.diffRange}`,
-          '```',
-        ].join('\n');
-      const renderedPrompt = renderReviewPrompt({
-        prNumber: state.env.prNumber,
-        githubRepository: state.env.githubRepository,
-        diffRange: state.diffRange!,
-        diffCommandInstruction,
-        ignorePatterns: state.cfg.ignore.length ? state.cfg.ignore.join(', ') : '(none configured)',
-        sharedContextInstruction: '',
-        styleInstruction: styleInstruction(state.cfg.style),
-        sensitivityInstruction: sensitivityInstruction(state.cfg.sensitivity),
-        deltaCleanInstruction: deltaCleanInstruction(state.reviewType!),
-        resolveThreadsInstruction: resolveThreadsInstruction(
-          state.cfg.reply_feedback,
-          state.priorFeedbackDigestPath ?? '',
-        ),
-        confidenceInstruction: confidenceInstruction(state.reviewRoundIndex ?? state.env.reviewRoundIndex),
-        priorFeedbackInstruction: priorFeedbackInstruction(
-          state.cfg.reply_feedback,
-          state.priorFeedbackDigestPath ?? '',
-        ),
-        triggerContextInstruction: triggerContextInstruction(state.env.triggerSource, state.env.actor),
-        reviewTypeNote: state.reviewType === 'delta' ? 'Delta review.' : 'Full review.',
-      });
-      return { ...state, renderedPrompt };
+      return { ...state, renderedPrompt: renderReviewPrompt(buildReviewPromptContext(state)) };
     },
   });
 
@@ -434,95 +387,20 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const basePrompt = state.renderedPrompt!;
-      const workingDir = state.repoPath ?? '/tmp/repo';
-      // The team default budget is higher than single; it is the *total* ceiling,
-      // split across the N reviewer sessions + the unify session below.
-      const totalBudget = state.cfg.max_budget_usd ?? (state.reviewMode === 'team' ? 15 : 5);
-
-      if (state.reviewMode === 'team') {
-        const roles = composeTeam(state.diffFiles ?? []);
-        const perCallBudget = totalBudget / (roles.length + 1);
-
-        // Compose → fan out reviewers in parallel; the await is the barrier.
-        // allSettled (not all): one reviewer failing (provider 5xx, its budget
-        // slice, a timeout) drops just that reviewer instead of discarding the
-        // whole review. Each reviewer reuses the base review body plus a role
-        // persona wrapped in read-only/output guards via systemPrompt.
-        const settled = await Promise.allSettled(
-          roles.map((role) =>
-            deps.agentRunner.run({
-              prompt: basePrompt,
-              systemPrompt: buildReviewerSystemPrompt(role),
-              model: state.cfg.model,
-              maxBudgetUsd: perCallBudget,
-              workingDir,
-              env: process.env,
-            }),
-          ),
-        );
-
-        const reviewerResults: AgentResult[] = [];
-        const survivingRoles: TeamRole[] = [];
-        for (const [i, outcome] of settled.entries()) {
-          const role = roles[i]!;
-          if (outcome.status === 'fulfilled') {
-            reviewerResults.push(outcome.value);
-            survivingRoles.push(role);
-          } else {
-            const reason = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
-            console.warn(`[agentCall] reviewer "${role}" failed, dropping from unify: ${reason}`);
-          }
-        }
-
-        // Nothing survived → surface the first failure (preserves
-        // AgentTimeoutError/AgentBudgetExceededError typing for the failure path).
-        if (reviewerResults.length === 0) {
-          const rejected = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected');
-          throw rejected ? rejected.reason : new Error('all team reviewers failed');
-        }
-
-        const reviewerReports = reviewerResults
-          .map((r, i) => `### Reviewer ${i + 1}: ${survivingRoles[i] ?? 'reviewer'}\n\n${r.stdout}`)
-          .join('\n\n');
-
-        // Unify: one merge pass that emits the final, postable JSON fence.
-        const unifyResult = await deps.agentRunner.run({
-          prompt: renderUnifyPrompt({
-            prNumber: state.env.prNumber,
-            githubRepository: state.env.githubRepository,
-            reviewerCount: reviewerResults.length,
-            reviewerReports,
-            styleInstruction: styleInstruction(state.cfg.style),
-            sensitivityInstruction: sensitivityInstruction(state.cfg.sensitivity),
-            deltaCleanInstruction: deltaCleanInstruction(state.reviewType!),
-            resolveThreadsInstruction: resolveThreadsInstruction(
-              state.cfg.reply_feedback,
-              state.priorFeedbackDigestPath ?? '',
-            ),
-            confidenceInstruction: confidenceInstruction(state.reviewRoundIndex ?? state.env.reviewRoundIndex),
-            reviewTypeNote: state.reviewType === 'delta' ? 'Delta review.' : 'Full review.',
-          }),
-          model: state.cfg.model,
-          maxBudgetUsd: perCallBudget,
-          workingDir,
-          env: process.env,
-        });
-
-        const agentResults = [...reviewerResults, unifyResult];
-        writeDebugOutput(agentResults);
-        return { ...state, agentResults, findingsSourceIndex: agentResults.length - 1 };
-      }
-
-      const result = await deps.agentRunner.run({
-        prompt: basePrompt,
-        model: state.cfg.model,
-        maxBudgetUsd: totalBudget,
-        workingDir,
-        env: process.env,
-      });
-      writeDebugOutput([result]);
-      return { ...state, agentResults: [result], findingsSourceIndex: 0 };
+      const agentResults =
+        state.reviewMode === 'team'
+          ? await runTeamReview(deps.agentRunner, state)
+          : [
+              await deps.agentRunner.run({
+                prompt: state.renderedPrompt!,
+                model: state.cfg.model,
+                maxBudgetUsd: state.cfg.max_budget_usd ?? 5,
+                workingDir: state.repoPath ?? '/tmp/repo',
+                env: process.env,
+              }),
+            ];
+      writeDebugOutput(agentResults);
+      return { ...state, agentResults, findingsSourceIndex: agentResults.length - 1 };
     },
   });
 
