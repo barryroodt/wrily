@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import {
-  PiRunner,
-  AgentTimeoutError,
-  AgentBudgetExceededError,
-  type PiSession,
-  type PiSessionFactory,
-} from '../../src/agent/pi.js';
+import { PiRunner, type PiSession, type PiSessionFactory } from '../../src/agent/pi.js';
+import { AgentTimeoutError, AgentBudgetExceededError } from '../../src/agent/errors.js';
 import type { AgentRunOptions } from '../../src/agent/runner.js';
 
 type FakeUsage = {

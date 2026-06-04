@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RuntimeEnv } from '../../src/config/types.js';
 import { maybePostFailure } from '../../src/post/failureFallback.js';
-import { AgentTimeoutError, AgentBudgetExceededError } from '../../src/agent/pi.js';
+import { AgentTimeoutError, AgentBudgetExceededError } from '../../src/agent/errors.js';
 
 function mkClient() {
   return {
