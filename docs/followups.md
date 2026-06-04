@@ -70,6 +70,16 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 - Pen-test the webhook receiver before broader adoption (HMAC bypass attempts, replay, payload-injection, large-payload DoS).
 - Add a `gitleaks` GitHub Action workflow so history scans run on every push, not just locally.
 
+## Post-pi cutover follow-ups
+
+Deferred during the [`claude -p` → in-process pi cutover](https://github.com/barryroodt/wrily/pull/32) (June 2026):
+
+- **Surface pi provider/auth errors clearly.** `PiRunner` currently lets a failed `prompt()` resolve with empty stdout (e.g. expired API key), which the workflow surfaces downstream as a generic "no \`\`\`json fence" failure comment. Subscribe to pi's `agent_end` / message-error events and throw a typed `ConfigError` / provider error so the failure comment names the cause.
+- **Eval framework.** Fixture-driven agent eval runs (sql-injection probe, delta-clean confirmation, team-mode behaviour, budget-trip) with assertions. Easier under pi than the abandoned Rust sidecar because PiRunner accepts an injected `PiSessionFactory` — replay-style fakes can drive whole reviews in-process and deterministically.
+- **MCP support.** Deferred — pi's native tools (`read,grep,find,ls,bash`) plus the hermetic resource loader covered v1. Revisit when reviewers need richer tool surfaces (databases, internal docs).
+- **`bridgeSkills` ↔ pi loader.** `cfg.shared_skills` still copies skills into `~/.claude/skills`, but PiRunner's hermetic `DefaultResourceLoader` (`noSkills: true`) does not read from there — the bridge is currently inert. Either wire `shared_skills` into pi's resource loader as an explicit allowlist or delete the bridge.
+- **Test-fixture consolidation.** `tests/workflow/*.test.ts` carry ~1.3k duplicated lines of `baseEnv`/`baseCfg`/`emptyDigestPage` + the `buildReviewWorkflow → createRun → start` scaffold (~15 files; ~11% duplication per `fallow dupes`). Extract a `tests/workflow/fixtures.ts` helper — behaviour-neutral but cross-cutting, hence a separate PR.
+
 ## Closed / done (kept for context)
 
 - ✅ Public release (`feat: Initial release`).
@@ -82,3 +92,4 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 - ✅ May 2026 Dependabot triage: merged #21–#25 (protobufjs, docker actions, worker dev deps); closed #19 (Mastra + octokit/yaml bundle) — octokit/yaml/Mastra tracked above.
 - ✅ Self-hosting guide drafted; README reframed around BYO deployment.
 - ✅ `@mastra/core` 0.10.0 → 1.37.1 (Mastra moved past 0.x while we deferred — jumped directly to 1.37.1). API note: `createRunAsync()` doesn't exist — `createRun()` itself is async and returns `Promise<Run>`, so all 35 call sites became `await workflow.createRun()`. `createStep` / `createWorkflow` signatures compatible as-is.
+- ✅ `claude -p` → in-process pi coding agent ([#32](https://github.com/barryroodt/wrily/pull/32), June 2026). Made Wrily provider-agnostic (any pi-supported model via `provider/model` slug); dropped Cursor + `CLAUDE_CODE_OAUTH_TOKEN` + Claude-Agent-Teams; team mode reframed as Wrily-orchestrated parallel reviewers + unify pass.

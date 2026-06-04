@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { classifyFailure } from '../../src/persist/failure.js';
-import { AgentBudgetExceededError, AgentTimeoutError } from '../../src/agent/pi.js';
+import { AgentBudgetExceededError, AgentTimeoutError } from '../../src/agent/errors.js';
 
 describe('classifyFailure', () => {
   it('maps AgentBudgetExceededError → budget_exceeded', () => {

@@ -12,6 +12,7 @@ import type { AssistantMessage } from '@earendil-works/pi-ai';
 import type { AgentRunner, AgentRunOptions, AgentResult, AgentTokenUsage } from './runner.js';
 import { resolveModel } from './modelResolver.js';
 import { PROVIDER_API_KEY_ENV } from '../config/providers.js';
+import { AgentTimeoutError, AgentBudgetExceededError } from './errors.js';
 
 /**
  * Per-`run()` timeout. Kept BELOW the CI job ceiling (workflows set
@@ -26,38 +27,6 @@ const DEFAULT_TIMEOUT_MS = (() => {
   const fromEnv = Number.parseInt(process.env.WRILY_AGENT_TIMEOUT_MS ?? '', 10);
   return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 12 * 60 * 1000;
 })();
-
-/**
- * Thrown when the in-flight pi session is aborted because it exceeded the
- * configured timeout. Distinguishes a forced abort from an organic failure so
- * the outer workflow can post a timeout-specific failure comment. `name` is
- * matched by `persist/failure.ts` and `instanceof` by `post/failureFallback.ts`.
- */
-export class AgentTimeoutError extends Error {
-  constructor(
-    public readonly timeoutMs: number,
-    public readonly stdout: string,
-    public readonly stderr: string,
-  ) {
-    super(`agent run timed out after ${timeoutMs}ms`);
-    this.name = 'AgentTimeoutError';
-  }
-}
-
-/**
- * Thrown when the in-flight pi session is aborted because accumulated cost
- * exceeded `maxBudgetUsd`. Unlike the old CLI heuristic, this is real
- * enforcement driven by pi-ai's native per-turn `Usage.cost`.
- */
-export class AgentBudgetExceededError extends Error {
-  constructor(
-    public readonly stdout: string,
-    public readonly stderr: string,
-  ) {
-    super('agent run exceeded budget');
-    this.name = 'AgentBudgetExceededError';
-  }
-}
 
 /** The slice of pi's `AgentSession` that {@link PiRunner} depends on. */
 export interface PiSession {
