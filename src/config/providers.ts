@@ -27,7 +27,7 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, readonly string[]>> =
 };
 
 /** Every recognized provider API-key env var name, deduplicated. */
-export const PROVIDER_API_KEY_ENV_VARS: readonly string[] = [
+const PROVIDER_API_KEY_ENV_VARS: readonly string[] = [
   ...new Set(Object.values(PROVIDER_API_KEY_ENV).flat()),
 ];
 

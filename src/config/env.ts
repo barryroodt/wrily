@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RuntimeEnv } from './types.js';
-import { hasAnyProviderAuth, PROVIDER_API_KEY_ENV_VARS } from './providers.js';
+import { hasAnyProviderAuth } from './providers.js';
 
 const rawEnvSchema = z.object({
   // Allow empty string (common in .env files) — parseEnv() checks that at
@@ -77,8 +77,9 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
 
   if (!hasAnyProviderAuth(raw)) {
     throw new Error(
-      'No provider API key configured. Set at least one of ' +
-        `${PROVIDER_API_KEY_ENV_VARS.join(', ')} (or AWS credentials for Amazon Bedrock).`,
+      'No provider API key configured. Set ANTHROPIC_API_KEY (or another provider ' +
+        'key: OPENAI_API_KEY, GEMINI_API_KEY, GOOGLE_CLOUD_API_KEY, MISTRAL_API_KEY, ' +
+        'AZURE_OPENAI_API_KEY, CLOUDFLARE_API_KEY), or AWS credentials for Amazon Bedrock.',
     );
   }
 
