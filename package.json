@@ -12,6 +12,8 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.78.0",
+    "@earendil-works/pi-coding-agent": "0.78.0",
     "@mastra/core": "1.37.1",
     "@octokit/graphql": "8.1.1",
     "@octokit/rest": "21.0.2",

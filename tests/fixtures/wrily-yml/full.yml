@@ -1,4 +1,4 @@
-model: opus
+model: anthropic/claude-opus-4-8
 mode: team
 team_threshold: 3
 team_threshold_unit: folders

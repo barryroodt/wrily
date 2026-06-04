@@ -1,14 +1,11 @@
 import type { AgentRunner } from './runner.js';
-import { ClaudeCodeRunner } from './claudeCode.js';
-import { CodexRunner } from './codex.js';
+import { PiRunner } from './pi.js';
 
-export function selectRunner(model: string): AgentRunner {
-  const lower = model.toLowerCase();
-  if (lower.includes('opus') || lower.includes('sonnet') || lower.includes('haiku') || lower.startsWith('claude')) {
-    return new ClaudeCodeRunner();
-  }
-  if (lower.startsWith('gpt') || lower.includes('codex')) {
-    return new CodexRunner();
-  }
-  throw new Error(`Unknown model "${model}" — cannot select agent runner.`);
+/**
+ * Select the agent runner for a model reference. Wrily is provider-agnostic:
+ * a single in-process pi runner serves every provider/model, and pi validates
+ * the model (and its auth) at run time, so the reference is not inspected here.
+ */
+export function selectRunner(_model: string): AgentRunner {
+  return new PiRunner();
 }

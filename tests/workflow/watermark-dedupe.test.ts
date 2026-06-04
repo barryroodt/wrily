@@ -26,9 +26,7 @@ const emptyDigestPage = {
 const COMMIT_SHA = 'abc1234567890deadbeefcafe0000000000000000';
 
 const baseEnv = {
-  authMethod: 'oauth' as const,
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'sk-ant-oat01-x',
   githubToken: 'gho_x',
   prNumber: 1,
   githubRepository: 'org/repo',

@@ -86,7 +86,7 @@ gh secret set ANTHROPIC_API_KEY --env anthropic --body '<your-key>' --repo <your
 
 (Or via the UI: **Settings → Environments → anthropic → Add secret**.)
 
-Use a Claude Code OAuth token (`CLAUDE_CODE_OAUTH_TOKEN`) instead if you'd rather bill against a Claude.ai subscription.
+To use a different provider, set that provider's API-key secret instead (e.g. `OPENAI_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`) and set `MODEL` to its slug (e.g. `openai/gpt-4o`). Bedrock authenticates via ambient AWS credentials.
 
 ---
 

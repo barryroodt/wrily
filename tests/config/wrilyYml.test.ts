@@ -8,7 +8,7 @@ const read = (name: string) => readFileSync(`tests/fixtures/wrily-yml/${name}.ym
 describe('parseWrilyYml', () => {
   it('applies defaults to a minimal/empty config', () => {
     const cfg = parseWrilyYml(read('minimal'));
-    expect(cfg.model).toBe('opus');
+    expect(cfg.model).toBe('anthropic/claude-opus-4-8');
     expect(cfg.mode).toBe('auto');
     expect(cfg.team_threshold).toBe(5);
     expect(cfg.team_threshold_unit).toBe('files');
@@ -23,7 +23,7 @@ describe('parseWrilyYml', () => {
 
   it('parses a fully-populated config', () => {
     const cfg = parseWrilyYml(read('full'));
-    expect(cfg.model).toBe('opus');
+    expect(cfg.model).toBe('anthropic/claude-opus-4-8');
     expect(cfg.mode).toBe('team');
     expect(cfg.team_threshold).toBe(3);
     expect(cfg.team_threshold_unit).toBe('folders');
@@ -60,7 +60,7 @@ describe('parseWrilyYml', () => {
 
 describe('applyEnvOverrides', () => {
   const baseCfg: WrilyConfig = {
-    model: 'opus',
+    model: 'anthropic/claude-opus-4-8',
     mode: 'auto',
     team_threshold: 5,
     team_threshold_unit: 'files',
@@ -74,9 +74,7 @@ describe('applyEnvOverrides', () => {
   };
 
   const baseEnv = (over: Partial<RuntimeEnv> = {}): RuntimeEnv => ({
-    authMethod: 'oauth',
     anthropicApiKey: null,
-    claudeCodeOauthToken: 'sk-ant-oat01-xxx',
     githubToken: 'gho_xxx',
     prNumber: 1,
     githubRepository: 'org/repo',
@@ -100,7 +98,7 @@ describe('applyEnvOverrides', () => {
   it('returns cfg unchanged when all env overrides are empty/null', () => {
     const result = applyEnvOverrides(baseCfg, baseEnv());
     expect(result.mode).toBe('auto');
-    expect(result.model).toBe('opus');
+    expect(result.model).toBe('anthropic/claude-opus-4-8');
     expect(result.max_budget_usd).toBe(10);
   });
 
@@ -110,8 +108,8 @@ describe('applyEnvOverrides', () => {
   });
 
   it('model override flips cfg.model', () => {
-    const result = applyEnvOverrides(baseCfg, baseEnv({ modelOverride: 'sonnet' }));
-    expect(result.model).toBe('sonnet');
+    const result = applyEnvOverrides(baseCfg, baseEnv({ modelOverride: 'openai/gpt-4o' }));
+    expect(result.model).toBe('openai/gpt-4o');
   });
 
   it('honors maxBudgetOverride: 0 (not treated as falsy)', () => {

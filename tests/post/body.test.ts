@@ -4,9 +4,7 @@ import type { WorkflowState } from '../../src/workflow/state.js';
 import type { Review } from '../../src/post/extract.js';
 
 const baseEnv: WorkflowState['env'] = {
-  authMethod: 'oauth',
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'sk-ant-oat01-x',
   githubToken: 'gho_x',
   prNumber: 42,
   githubRepository: 'org/repo',

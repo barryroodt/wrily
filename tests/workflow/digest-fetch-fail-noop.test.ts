@@ -18,7 +18,7 @@ describe('workflow / digest fetch noop when reply_feedback: off', () => {
 
     const initial: WorkflowState = {
       env: {
-        authMethod: 'oauth', anthropicApiKey: null, claudeCodeOauthToken: 'sk-ant-oat01-x',
+        anthropicApiKey: null,
         githubToken: 'gho_x', prNumber: 1, githubRepository: 'org/repo',
         baseBranch: 'main', commitSha: 'abc', sharedRepo: 'your-org/shared-wrily-skills', sharedToken: '',
         wrilyBotLogin: 'wrily', reviewRoundIndex: 0, scopeOverride: '',

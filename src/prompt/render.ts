@@ -1,8 +1,7 @@
-import { REVIEW_PROMPT_TEMPLATE, TEAM_REVIEW_PROMPT_TEMPLATE } from './templates.js';
-import type { ReviewMode } from '../config/types.js';
+import { REVIEW_PROMPT_TEMPLATE, UNIFY_REVIEW_PROMPT_TEMPLATE } from './templates.js';
 
-// NOTE: `postInstruction` is intentionally absent — Claude no longer produces
-// the review body. The workflow renders + posts; Claude emits JSON only.
+// NOTE: `postInstruction` is intentionally absent — the agent no longer produces
+// the review body. The workflow renders + posts; the agent emits JSON only.
 export type PromptContext = {
   prNumber: number;
   githubRepository: string;
@@ -18,45 +17,71 @@ export type PromptContext = {
   priorFeedbackInstruction: string;
   triggerContextInstruction: string;
   reviewTypeNote: string;
-  reviewMode: ReviewMode;
 };
 
-const PLACEHOLDER_MAP: Record<string, keyof PromptContext> = {
-  PR_NUMBER: 'prNumber',
-  GITHUB_REPOSITORY: 'githubRepository',
-  DIFF_RANGE: 'diffRange',
-  DIFF_COMMAND_INSTRUCTION: 'diffCommandInstruction',
-  IGNORE_PATTERNS: 'ignorePatterns',
-  SHARED_CONTEXT_INSTRUCTION: 'sharedContextInstruction',
-  STYLE_INSTRUCTION: 'styleInstruction',
-  SENSITIVITY_INSTRUCTION: 'sensitivityInstruction',
-  DELTA_CLEAN_INSTRUCTION: 'deltaCleanInstruction',
-  RESOLVE_THREADS_INSTRUCTION: 'resolveThreadsInstruction',
-  CONFIDENCE_INSTRUCTION: 'confidenceInstruction',
-  PRIOR_FEEDBACK_INSTRUCTION: 'priorFeedbackInstruction',
-  TRIGGER_CONTEXT_INSTRUCTION: 'triggerContextInstruction',
-  REVIEW_TYPE_NOTE: 'reviewTypeNote',
+/** Context for the team-mode unify pass that merges reviewer reports. */
+export type UnifyPromptContext = {
+  prNumber: number;
+  githubRepository: string;
+  reviewerCount: number;
+  reviewerReports: string;
+  styleInstruction: string;
+  sensitivityInstruction: string;
+  deltaCleanInstruction: string;
+  resolveThreadsInstruction: string;
+  confidenceInstruction: string;
+  reviewTypeNote: string;
 };
 
-export function renderReviewPrompt(ctx: PromptContext): string {
-  const template = ctx.reviewMode === 'team'
-    ? TEAM_REVIEW_PROMPT_TEMPLATE
-    : REVIEW_PROMPT_TEMPLATE;
-
+function applyTemplate(template: string, values: Record<string, string>): string {
   let out = template;
-  for (const [placeholder, key] of Object.entries(PLACEHOLDER_MAP)) {
-    const value = ctx[key];
-    if (value === undefined || value === null) {
-      throw new Error(`Prompt context missing required field: ${key}`);
-    }
-    out = out.replaceAll(`{{${placeholder}}}`, String(value));
+  for (const [placeholder, value] of Object.entries(values)) {
+    out = out.replaceAll(`{{${placeholder}}}`, value);
   }
-
-  // Defensive: any remaining {{...}} placeholders are bugs.
+  // Defensive: any remaining {{...}} placeholders are bugs (a value was not mapped).
   const leftover = out.match(/\{\{[A-Z_]+\}\}/g);
   if (leftover) {
     throw new Error(`Unsubstituted placeholders remain: ${leftover.join(', ')}`);
   }
-
   return out;
+}
+
+/**
+ * Render the review prompt body. Used both for single-mode reviews and, in team
+ * mode, as the shared base body for every reviewer (each reviewer layers its
+ * role persona on top via the runner's `systemPrompt`).
+ */
+export function renderReviewPrompt(ctx: PromptContext): string {
+  return applyTemplate(REVIEW_PROMPT_TEMPLATE, {
+    PR_NUMBER: String(ctx.prNumber),
+    GITHUB_REPOSITORY: ctx.githubRepository,
+    DIFF_RANGE: ctx.diffRange,
+    DIFF_COMMAND_INSTRUCTION: ctx.diffCommandInstruction,
+    IGNORE_PATTERNS: ctx.ignorePatterns,
+    SHARED_CONTEXT_INSTRUCTION: ctx.sharedContextInstruction,
+    STYLE_INSTRUCTION: ctx.styleInstruction,
+    SENSITIVITY_INSTRUCTION: ctx.sensitivityInstruction,
+    DELTA_CLEAN_INSTRUCTION: ctx.deltaCleanInstruction,
+    RESOLVE_THREADS_INSTRUCTION: ctx.resolveThreadsInstruction,
+    CONFIDENCE_INSTRUCTION: ctx.confidenceInstruction,
+    PRIOR_FEEDBACK_INSTRUCTION: ctx.priorFeedbackInstruction,
+    TRIGGER_CONTEXT_INSTRUCTION: ctx.triggerContextInstruction,
+    REVIEW_TYPE_NOTE: ctx.reviewTypeNote,
+  });
+}
+
+/** Render the team-mode unify prompt that consolidates reviewer reports. */
+export function renderUnifyPrompt(ctx: UnifyPromptContext): string {
+  return applyTemplate(UNIFY_REVIEW_PROMPT_TEMPLATE, {
+    PR_NUMBER: String(ctx.prNumber),
+    GITHUB_REPOSITORY: ctx.githubRepository,
+    REVIEWER_COUNT: String(ctx.reviewerCount),
+    REVIEWER_REPORTS: ctx.reviewerReports,
+    STYLE_INSTRUCTION: ctx.styleInstruction,
+    SENSITIVITY_INSTRUCTION: ctx.sensitivityInstruction,
+    DELTA_CLEAN_INSTRUCTION: ctx.deltaCleanInstruction,
+    RESOLVE_THREADS_INSTRUCTION: ctx.resolveThreadsInstruction,
+    CONFIDENCE_INSTRUCTION: ctx.confidenceInstruction,
+    REVIEW_TYPE_NOTE: ctx.reviewTypeNote,
+  });
 }

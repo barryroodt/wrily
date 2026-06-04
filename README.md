@@ -58,7 +58,7 @@ No workflow YAML, no secrets, no Actions / GHCR perms to grant per-repo.
 Repo root. All keys optional — defaults are sensible.
 
 ```yaml
-model: opus              # opus | sonnet | haiku
+model: anthropic/claude-opus-4-8  # any pi provider/model slug (e.g. openai/gpt-4o)
 mode: auto               # auto | single | team
 team_threshold: 5        # auto-flips to team mode at this many files/folders
 team_threshold_unit: files # files (default) | folders
@@ -95,7 +95,7 @@ PR opens → `Wrily / review — In progress…` should appear in the checks pan
 
 - Docker
 - `gh` CLI (authenticated: `gh auth login`)
-- One of: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`
+- A provider API key — one of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_API_KEY`, `MISTRAL_API_KEY`, `AZURE_OPENAI_API_KEY`, `CLOUDFLARE_API_KEY` (or AWS credentials for Bedrock)
 
 ### Setup
 
@@ -118,7 +118,7 @@ cp .env.example .env   # add your auth token
 MODE=team ./wrily your-org/your-repo 2209
 
 # Different model
-MODEL=sonnet ./wrily your-org/your-repo 2209
+MODEL=openai/gpt-4o ./wrily your-org/your-repo 2209
 
 # Verbose comment style (default is terse / caveman-review)
 STYLE=verbose ./wrily your-org/your-repo 2209
@@ -243,7 +243,7 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
         ├── parseEnv()           — Zod-validated runtime env
         ├── parseWrilyYml()     — .wrily.yml config + defaults
         ├── applyEnvOverrides()  — MODE/MODEL/MAX_BUDGET env > .wrily.yml > default
-        ├── selectRunner(cfg.model) — claude-code | codex runner
+        ├── selectRunner(cfg.model) — provider-agnostic in-process pi runner
         └── Mastra workflow (src/workflow/)
               ├── cloneRepo               — git-clone consumer PR into ephemeral /tmp dir; checkout commit SHA
               ├── cloneShared             — best-effort your-org/shared-wrily-skills clone for org context (skips on missing token)
@@ -252,7 +252,7 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
               ├── resolveReview           — SCOPE_OVERRIDE → reviewType; reviewRoundIndex from prior handoff markers;
               │                             delta merge-filter (excludes files merged in from base since last review)
               ├── renderPrompt            — typed prompt template (forbids gh posting, JSON-in-fence only)
-              ├── agentCall               — spawn claude -p; AgentTimeoutError / AgentBudgetExceededError on SIGTERM / budget
+              ├── agentCall               — in-process pi session (PiRunner, any provider); AgentTimeoutError / AgentBudgetExceededError on timeout / budget abort
               ├── extractFindings         — JSON-in-fence → discriminated-union Review (delta-clean prose fallback)
               ├── routeFindings           — new_comment / reply_in_thread / suppress; re-raise unknown threads
               ├── postToGitHub            — watermark dedupe → REST review POST → 422 per-comment fallback; DRY_RUN guards writes
@@ -269,7 +269,7 @@ Source layout under `src/`:
 | `config/` | `RuntimeEnv` + `WrilyConfig` Zod schemas + `applyEnvOverrides` (`env.ts`, `wrilyYml.ts`, `types.ts`) |
 | `prompt/` | Prompt templates + typed renderer + instruction builders |
 | `post/` | Findings extract → route → GitHub REST (review POST + reply-in-thread + thread resolve) + body renderer + failure fallback |
-| `agent/` | `AgentRunner` interface + `ClaudeCodeRunner` (with `AgentTimeoutError`/`AgentBudgetExceededError`) + factory |
+| `agent/` | `AgentRunner` interface + `PiRunner` (in-process pi; `AgentTimeoutError`/`AgentBudgetExceededError`) + `modelResolver` + factory |
 | `git/` | Diff range + ignore-pattern + team-threshold scope + `intersectFileLists` + `computeDiffFiles` |
 | `skills/` | `bridgeSkills` helper for copying shared skills |
 | `workflow/` | Mastra `createStep` definitions (cloneRepo → … → resolveAddressedThreads) + `createWorkflow` assembly |
@@ -281,7 +281,7 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 | Var | Required | Notes |
 |---|---|---|
 | `GITHUB_TOKEN`, `PR_NUMBER`, `GITHUB_REPOSITORY`, `BASE_BRANCH`, `COMMIT_SHA` | yes | Workflow inputs |
-| `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` | one | Claude auth |
+| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GOOGLE_CLOUD_API_KEY` / `MISTRAL_API_KEY` / `AZURE_OPENAI_API_KEY` / `CLOUDFLARE_API_KEY`) | one | Provider auth (Bedrock via AWS creds) |
 | `SHARED_REPO` | no | Optional shared skills repo in owner/repo form |
 | `SHARED_TOKEN` | no | Shared-skills clone token; skipped silently when empty |
 | `MODE`, `MODEL`, `MAX_BUDGET` | no | Layer over `.wrily.yml` |

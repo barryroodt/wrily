@@ -1,6 +1,6 @@
 import type { Octokit } from '@octokit/rest';
 import type { RuntimeEnv } from '../config/types.js';
-import { AgentTimeoutError, AgentBudgetExceededError } from '../agent/claudeCode.js';
+import { AgentTimeoutError, AgentBudgetExceededError } from '../agent/pi.js';
 
 /**
  * Records workflow-crash context to logs only. No GH comment is posted.

@@ -39,9 +39,7 @@ describe('workflow / single mode happy path', () => {
 
     const initial: WorkflowState = {
       env: {
-        authMethod: 'oauth',
         anthropicApiKey: null,
-        claudeCodeOauthToken: 'sk-ant-oat01-x',
         githubToken: 'gho_x',
         prNumber: 1,
         githubRepository: 'org/repo',

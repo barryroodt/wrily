@@ -36,7 +36,6 @@ export type WorkflowState = {
 
   // After renderPrompt
   renderedPrompt?: string;
-  renderedPromptsByAgent?: string[];
 
   // After agentCall
   agentResults?: AgentResult[];

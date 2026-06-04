@@ -30,9 +30,7 @@ const emptyDigestPage = {
 
 function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
   return {
-    authMethod: 'oauth',
     anthropicApiKey: null,
-    claudeCodeOauthToken: 'sk-ant-oat01-x',
     githubToken: 'gho_x',
     prNumber: 42,
     githubRepository: 'org/repo',
@@ -108,7 +106,7 @@ describe('workflow / budget defaults and request_changes', () => {
     expect(agentRunner.calls[0]?.maxBudgetUsd).toBe(5);
   });
 
-  it('applies the default budget cap for team mode when max_budget_usd is unset', async () => {
+  it('splits the default team budget across the reviewer + unify calls', async () => {
     const { agentRunner } = await runWorkflow({
       env: baseEnv(),
       cfg: baseCfg({ mode: 'team', max_budget_usd: null }),
@@ -116,7 +114,11 @@ describe('workflow / budget defaults and request_changes', () => {
       diffFiles: ['src/x.ts'],
     });
 
-    expect(agentRunner.calls[0]?.maxBudgetUsd).toBe(15);
+    // Team mode fans out N reviewers + 1 unify; the default $15 ceiling is the
+    // total, split evenly so the summed per-call caps stay within budget.
+    expect(agentRunner.calls.length).toBeGreaterThan(1);
+    const total = agentRunner.calls.reduce((sum, c) => sum + (c.maxBudgetUsd ?? 0), 0);
+    expect(total).toBeCloseTo(15, 5);
   });
 
   it('posts REQUEST_CHANGES for critical findings when request_changes is enabled', async () => {

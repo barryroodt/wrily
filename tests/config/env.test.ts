@@ -8,14 +8,12 @@ describe('parseEnv', () => {
     GITHUB_REPOSITORY: 'org/repo',
     BASE_BRANCH: 'main',
     COMMIT_SHA: 'abc1234',
-    CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-xxx',
+    ANTHROPIC_API_KEY: 'sk-ant-xxx',
   };
 
-  it('parses minimal valid env with OAuth token', () => {
+  it('parses minimal valid env with an Anthropic API key', () => {
     const env = parseEnv(minimal);
-    expect(env.authMethod).toBe('oauth');
-    expect(env.claudeCodeOauthToken).toBe('sk-ant-oat01-xxx');
-    expect(env.anthropicApiKey).toBeNull();
+    expect(env.anthropicApiKey).toBe('sk-ant-xxx');
     expect(env.prNumber).toBe(42);
     expect(env.dryRun).toBe(false);
     expect(env.sharedRepo).toBe('');
@@ -33,15 +31,39 @@ describe('parseEnv', () => {
     expect(env.wrilyBotLogin).toBe('custom-bot');
   });
 
-  it('parses env with API key instead of OAuth', () => {
-    const env = parseEnv({ ...minimal, CLAUDE_CODE_OAUTH_TOKEN: undefined, ANTHROPIC_API_KEY: 'sk-ant-xxx' });
-    expect(env.authMethod).toBe('api_key');
-    expect(env.anthropicApiKey).toBe('sk-ant-xxx');
-    expect(env.claudeCodeOauthToken).toBeNull();
+  it('accepts any recognized provider key as the sole auth source', () => {
+    for (const key of [
+      'OPENAI_API_KEY',
+      'GEMINI_API_KEY',
+      'GOOGLE_CLOUD_API_KEY',
+      'MISTRAL_API_KEY',
+      'AZURE_OPENAI_API_KEY',
+      'CLOUDFLARE_API_KEY',
+    ]) {
+      const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [key]: 'k-value' });
+      expect(env.anthropicApiKey).toBeNull();
+      expect(env.prNumber).toBe(42);
+    }
   });
 
-  it('throws when neither OAuth nor API key is set', () => {
-    expect(() => parseEnv({ ...minimal, CLAUDE_CODE_OAUTH_TOKEN: undefined })).toThrow(/auth/i);
+  it('exposes provider keys when present and nulls absent ones', () => {
+    const env = parseEnv({ ...minimal, OPENAI_API_KEY: 'sk-openai', GEMINI_API_KEY: 'g-key' });
+    expect(env.anthropicApiKey).toBe('sk-ant-xxx');
+    expect(env.openaiApiKey).toBe('sk-openai');
+    expect(env.geminiApiKey).toBe('g-key');
+    expect(env.mistralApiKey).toBeNull();
+  });
+
+  it('throws when no recognized provider key is configured', () => {
+    expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/provider API key/i);
+  });
+
+  it('accepts AWS credentials (Amazon Bedrock) as the sole auth, no API key needed', () => {
+    for (const awsVar of ['AWS_ACCESS_KEY_ID', 'AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK']) {
+      const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [awsVar]: 'x' });
+      expect(env.anthropicApiKey).toBeNull();
+      expect(env.prNumber).toBe(42);
+    }
   });
 
   it('throws when GITHUB_TOKEN is missing', () => {

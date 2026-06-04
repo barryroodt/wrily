@@ -14,24 +14,17 @@ import { renderReviewPrompt } from '../prompt/render.js';
 import { buildCloneUrl } from '../git/clone.js';
 import { bridgeSkills } from '../skills/loader.js';
 import { isValidSharedSkillName } from '../skills/names.js';
-import {
-  styleInstruction,
-  sensitivityInstruction,
-  deltaCleanInstruction,
-  resolveThreadsInstruction,
-  confidenceInstruction,
-  priorFeedbackInstruction,
-  triggerContextInstruction,
-} from '../prompt/instructions.js';
 import { computeDiffRange, countTeamThresholdScope, applyIgnorePatterns, computeDiffFiles } from '../git/diff.js';
 import { resolveAddressedThreads } from '../post/resolveThreads.js';
 import { postReview, replyInThread } from '../post/github.js';
 import { renderReviewBody } from '../post/body.js';
-import type { AgentRunner } from '../agent/runner.js';
+import type { AgentRunner, AgentResult } from '../agent/runner.js';
 import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
+import { buildReviewPromptContext } from './reviewContext.js';
+import { runTeamReview } from './teamReview.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -104,6 +97,30 @@ function runGitCommandText(cmd: string, cwd: string): string {
   const parts = cmd.trim().split(/\s+/);
   if (parts[0] !== 'git') throw new Error(`unsupported git command: ${cmd}`);
   return runGitText(parts.slice(1), { cwd });
+}
+
+/**
+ * Persist raw agent output(s) for debugging when WRILY_DEBUG_AGENT_OUTPUT names
+ * a file path. No-op (and never throws) otherwise.
+ */
+function writeDebugOutput(results: AgentResult[]): void {
+  const debugPath = process.env.WRILY_DEBUG_AGENT_OUTPUT;
+  if (!debugPath) return;
+  try {
+    const body = results
+      .map(
+        (r, i) =>
+          `=== AGENT ${i} (model=${r.model ?? 'unknown'}) ===\n=== STDOUT ===\n${r.stdout}\n\n=== STDERR ===\n${r.stderr}\n`,
+      )
+      .join('\n');
+    writeFileSync(debugPath, body, 'utf8');
+    const summary = results
+      .map((r, i) => `#${i}: stdout=${r.stdout.length}B exit=${r.exitCode} durationMs=${r.durationMs}`)
+      .join('; ');
+    console.log(`[agentCall] raw output written to ${debugPath} (${results.length} result(s); ${summary})`);
+  } catch (err) {
+    console.warn(`[agentCall] failed to write debug output to ${debugPath}: ${(err as Error).message}`);
+  }
 }
 
 export function makeSteps(deps: WorkflowDeps) {
@@ -360,47 +377,7 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const diffFiles = state.diffFiles ?? [];
-      const diffPathFilter = diffFiles.length > 0 ? ` -- ${diffFiles.join(' ')}` : '';
-      const diffCommandInstruction = state.reviewType === 'delta'
-        ? [
-          'This is a DELTA review — only review changes the author made since the last reviewed commit.',
-          '',
-          '```bash',
-          `git diff ${state.diffRange}${diffPathFilter}`,
-          '```',
-        ].join('\n')
-        : [
-          'Get the full diff of this PR:',
-          '',
-          '```bash',
-          `git diff ${state.diffRange}`,
-          '```',
-        ].join('\n');
-      const renderedPrompt = renderReviewPrompt({
-        prNumber: state.env.prNumber,
-        githubRepository: state.env.githubRepository,
-        diffRange: state.diffRange!,
-        diffCommandInstruction,
-        ignorePatterns: state.cfg.ignore.length ? state.cfg.ignore.join(', ') : '(none configured)',
-        sharedContextInstruction: '',
-        styleInstruction: styleInstruction(state.cfg.style),
-        sensitivityInstruction: sensitivityInstruction(state.cfg.sensitivity),
-        deltaCleanInstruction: deltaCleanInstruction(state.reviewType!),
-        resolveThreadsInstruction: resolveThreadsInstruction(
-          state.cfg.reply_feedback,
-          state.priorFeedbackDigestPath ?? '',
-        ),
-        confidenceInstruction: confidenceInstruction(state.reviewRoundIndex ?? state.env.reviewRoundIndex),
-        priorFeedbackInstruction: priorFeedbackInstruction(
-          state.cfg.reply_feedback,
-          state.priorFeedbackDigestPath ?? '',
-        ),
-        triggerContextInstruction: triggerContextInstruction(state.env.triggerSource, state.env.actor),
-        reviewTypeNote: state.reviewType === 'delta' ? 'Delta review.' : 'Full review.',
-        reviewMode: state.reviewMode!,
-      });
-      return { ...state, renderedPrompt };
+      return { ...state, renderedPrompt: renderReviewPrompt(buildReviewPromptContext(state)) };
     },
   });
 
@@ -410,26 +387,20 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const result = await deps.agentRunner.run({
-        prompt: state.renderedPrompt!,
-        model: state.cfg.model,
-        maxBudgetUsd: state.cfg.max_budget_usd ?? (state.reviewMode === 'team' ? 15 : 5),
-        workingDir: state.repoPath ?? '/tmp/repo',
-        env: process.env,
-      });
-      // Debug: persist raw model output when env requests it (set
-      // WRILY_DEBUG_AGENT_OUTPUT=<path> to enable). Skipped silently otherwise.
-      const debugPath = process.env.WRILY_DEBUG_AGENT_OUTPUT;
-      if (debugPath) {
-        try {
-          const { writeFileSync: w } = await import('node:fs');
-          w(debugPath, `=== STDOUT ===\n${result.stdout}\n\n=== STDERR ===\n${result.stderr}\n`, 'utf8');
-          console.log(`[agentCall] raw output written to ${debugPath} (stdout=${result.stdout.length}B, stderr=${result.stderr.length}B, exit=${result.exitCode}, durationMs=${result.durationMs})`);
-        } catch (err) {
-          console.warn(`[agentCall] failed to write debug output to ${debugPath}: ${(err as Error).message}`);
-        }
-      }
-      return { ...state, agentResults: [result] };
+      const agentResults =
+        state.reviewMode === 'team'
+          ? await runTeamReview(deps.agentRunner, state)
+          : [
+              await deps.agentRunner.run({
+                prompt: state.renderedPrompt!,
+                model: state.cfg.model,
+                maxBudgetUsd: state.cfg.max_budget_usd ?? 5,
+                workingDir: state.repoPath ?? '/tmp/repo',
+                env: process.env,
+              }),
+            ];
+      writeDebugOutput(agentResults);
+      return { ...state, agentResults };
     },
   });
 
@@ -439,9 +410,13 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const reviews = (state.agentResults ?? []).map((r) =>
-        extractFindings(r.stdout, { reviewType: state.reviewType }),
-      );
+      const results = state.agentResults ?? [];
+      // The postable review is always the last agent result: the single-mode
+      // result, or the team unify pass appended after the reviewers.
+      const source = results.at(-1);
+      const reviews = source
+        ? [extractFindings(source.stdout, { reviewType: state.reviewType })]
+        : [];
       const findings = reviews.flatMap((r) => r.findings);
       return { ...state, reviews, findings };
     },
@@ -622,7 +597,7 @@ export function makeSteps(deps: WorkflowDeps) {
           commit_sha: state.env.commitSha,
           trigger_source: collapseTriggerSource(state.env.triggerSource),
           review_round: state.reviewRoundIndex ?? state.env.reviewRoundIndex ?? 0,
-          model: state.cfg.model,
+          model: agentResults[0]?.model ?? state.cfg.model,
           review_mode: state.reviewMode === 'team' ? 'team' : 'single',
           scope: state.reviewType === 'delta' ? 'delta' : 'full',
           max_budget_usd: state.cfg.max_budget_usd ?? null,
@@ -638,7 +613,7 @@ export function makeSteps(deps: WorkflowDeps) {
 
         const subagents: SubagentRecord[] = agentResults.map((r, idx) => ({
           role: state.reviewMode === 'team' ? `team-${idx}` : 'single',
-          model: state.cfg.model,
+          model: r.model ?? state.cfg.model,
           duration_ms: r.durationMs,
           input_tokens: r.tokenUsage?.inputTokens ?? 0,
           output_tokens: r.tokenUsage?.outputTokens ?? 0,

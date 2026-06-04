@@ -4,9 +4,7 @@ import type { RuntimeEnv } from '../../src/config/types.js';
 import type { ReviewRunRecord, SubagentRecord } from '../../src/persist/types.js';
 
 const baseEnv = {
-  authMethod: 'oauth',
   anthropicApiKey: null,
-  claudeCodeOauthToken: 'tok',
   githubToken: 't',
   prNumber: 1,
   githubRepository: 'o/r',

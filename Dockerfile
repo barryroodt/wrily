@@ -29,10 +29,6 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   && apt-get update && apt-get install -y gh \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code@2.1.126
-
-ENV CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-
 RUN useradd -m -s /bin/bash reviewer \
   && mkdir -p /home/reviewer/.claude/skills /tmp/repo \
   && chown -R reviewer:reviewer /home/reviewer /tmp/repo
@@ -46,6 +42,11 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder --chown=reviewer:reviewer /build/dist ./dist
 
 COPY --chown=reviewer:reviewer skills/ /home/reviewer/.claude/skills/
+
+# Team-mode role prompts live under the copied skills dir. teamRoles.ts resolves
+# templates relative to dist/ by default, but skills are copied to ~/.claude here,
+# not under /app — so point it at the actual location.
+ENV WRILY_SKILLS_DIR=/home/reviewer/.claude/skills
 
 USER reviewer
 

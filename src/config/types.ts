@@ -2,7 +2,12 @@ export type ReviewMode = 'auto' | 'single' | 'team';
 export type ReviewType = 'full' | 'delta';
 export type Style = 'terse' | 'verbose';
 export type Sensitivity = 'minor' | 'important' | 'critical';
-export type Model = 'opus' | 'sonnet' | 'haiku' | string;
+/**
+ * A model reference. The canonical form is a `provider/model` slug
+ * (e.g. `anthropic/claude-opus-4-8`); bare family aliases like `opus` are
+ * accepted as input sugar and normalized to a slug by `resolveModel`.
+ */
+export type Model = string;
 
 export type TeamThresholdUnit = 'files' | 'folders';
 
@@ -21,9 +26,17 @@ export type WrilyConfig = {
 };
 
 export type RuntimeEnv = {
-  authMethod: 'oauth' | 'api_key';
-  anthropicApiKey: string | null;
-  claudeCodeOauthToken: string | null;
+  // Provider API keys, mirrored from the environment as parsed-env state.
+  // pi reads provider keys from process.env at run time; these back the
+  // auth gate and diagnostics. Bedrock auth is ambient (AWS creds) and not
+  // represented here.
+  anthropicApiKey?: string | null;
+  openaiApiKey?: string | null;
+  geminiApiKey?: string | null;
+  googleCloudApiKey?: string | null;
+  mistralApiKey?: string | null;
+  azureOpenaiApiKey?: string | null;
+  cloudflareApiKey?: string | null;
   githubToken: string;
   prNumber: number;
   githubRepository: string;

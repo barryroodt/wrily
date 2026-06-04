@@ -1,8 +1,9 @@
 # Wrily Configuration
 # Place as .wrily.yml in your repo root
 
-# Claude model to use (default: opus)
-# model: opus
+# Model to use, as a provider/model slug (default: anthropic/claude-opus-4-8).
+# Any pi-supported provider works, e.g. openai/gpt-4o or google/gemini-2.5-pro.
+# model: anthropic/claude-opus-4-8
 
 # Review mode: auto | single | team
 # - auto: uses team mode when diff touches 5+ directories (default)
