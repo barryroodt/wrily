@@ -29,6 +29,15 @@ updates:
       - dependencies
       - npm
     groups:
+      # Vitest + its plugins are tightly coupled — @vitest/coverage-v8 declares
+      # a strict-equality peer dep on the matching vitest version. They MUST
+      # bump in lockstep, so claim them in a dedicated group before the
+      # broader dev-dependencies pattern. See skill://dependabot-review for the
+      # full coupled-package edge case.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       dev-dependencies:
         dependency-type: development
         update-types:
