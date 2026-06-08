@@ -31,8 +31,8 @@ importers:
         version: 3.25.76
     devDependencies:
       '@types/node':
-        specifier: 22.19.19
-        version: 22.19.19
+        specifier: 22.19.20
+        version: 22.19.20
       '@vitest/coverage-v8':
         specifier: 4.1.8
         version: 4.1.8(vitest@4.1.8)
@@ -41,7 +41,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.8
-        version: 4.1.8(@types/node@22.19.19)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.8(@types/node@22.19.20)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0))
 
 packages:
 
@@ -652,8 +652,8 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/node@22.19.19':
-    resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
+  '@types/node@22.19.20':
+    resolution: {integrity: sha512-6tELRwSDYWW9EdZhbeZmYGZ1/7Djkt+Ah3/ScEYT9cDord7UJzasR/4D3VONg9tQI5CDp+/CZC1AXj2pCFOvpw==}
 
   '@types/retry@0.12.0':
     resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
@@ -2759,7 +2759,7 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node@22.19.19':
+  '@types/node@22.19.20':
     dependencies:
       undici-types: 6.21.0
 
@@ -2779,7 +2779,7 @@ snapshots:
       obug: 2.1.2
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@22.19.19)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
+      vitest: 4.1.8(@types/node@22.19.20)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0))
 
   '@vitest/expect@4.1.8':
     dependencies:
@@ -2790,13 +2790,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.8(vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.8(vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.8
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.8':
     dependencies:
@@ -3816,7 +3816,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 22.19.19
+      '@types/node': 22.19.20
       long: 5.3.2
 
   proxy-addr@2.0.7:
@@ -4086,7 +4086,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0):
+  vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -4094,15 +4094,15 @@ snapshots:
       rolldown: 1.0.3
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 22.19.19
+      '@types/node': 22.19.20
       fsevents: 2.3.3
       jiti: 2.7.0
       yaml: 2.9.0
 
-  vitest@4.1.8(@types/node@22.19.19)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)):
+  vitest@4.1.8(@types/node@22.19.20)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.8
-      '@vitest/mocker': 4.1.8(vite@8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.8(vite@8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.8
       '@vitest/runner': 4.1.8
       '@vitest/snapshot': 4.1.8
@@ -4119,10 +4119,10 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.16(@types/node@22.19.19)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.16(@types/node@22.19.20)(jiti@2.7.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.19.19
+      '@types/node': 22.19.20
       '@vitest/coverage-v8': 4.1.8(vitest@4.1.8)
     transitivePeerDependencies:
       - msw
