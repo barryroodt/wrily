@@ -1,8 +1,10 @@
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Octokit } from '@octokit/rest';
 import { graphql as octoGraphql } from '@octokit/graphql';
 import { parseEnv } from './config/env.js';
 import { parseWrilyYml, applyEnvOverrides } from './config/wrilyYml.js';
-import { selectRunner } from './agent/factory.js';
+import { GantryRunner } from './agent/gantry.js';
 import { buildReviewWorkflow, type WorkflowState } from './workflow/index.js';
 import { maybePostFailure } from './post/failureFallback.js';
 import { persistFailureRun } from './persist/failure.js';
@@ -78,6 +80,18 @@ function logError(err: unknown): void {
   }));
 }
 
+/**
+ * Resolve wrily's in-tree `profiles/review/` directory, forwarded to gantry's
+ * `--profile`. The Docker image copies `profiles/review/` to `/app/profiles/review`,
+ * which is exactly `../profiles/review` from this module once compiled to
+ * `/app/dist/main.js` — so, unlike `skills/` (relocated to ~/.claude, hence
+ * `WRILY_SKILLS_DIR`), no env override is needed: the path is module-relative in
+ * both the image and local dev.
+ */
+function resolveProfileDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', 'profiles', 'review');
+}
+
 async function main(): Promise<void> {
   const env = parseEnv(process.env as Record<string, string | undefined>);
 
@@ -91,7 +105,10 @@ async function main(): Promise<void> {
   const graphqlClient = {
     graphql: (query: string, vars?: Record<string, unknown>) => graphqlFn(query, vars),
   };
-  const agentRunner = selectRunner(cfg.model);
+  const agentRunner = new GantryRunner({
+    binary: env.wrilyGantryBin ?? 'gantry',
+    profileDir: resolveProfileDir(),
+  });
 
   const workflow = buildReviewWorkflow({ agentRunner, octokit, graphqlClient });
 
