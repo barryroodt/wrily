@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import type { WrilyConfig, RuntimeEnv } from './types.js';
+import type { WrilyConfig, RuntimeEnv, ReviewMode } from './types.js';
 import { isValidSharedSkillName } from '../skills/names.js';
 
 const schema = z.object({
@@ -17,7 +17,7 @@ const schema = z.object({
       return 'files';
     }, z.enum(['files', 'folders']))
     .default('files'),
-  max_budget_usd: z.number().positive().nullable().default(null),
+  max_tokens: z.number().int().positive().nullable().default(null),
   ignore: z.array(z.string()).default([]),
   shared_skills: z.array(
     z.string().refine(isValidSharedSkillName, {
@@ -36,21 +36,36 @@ export function parseWrilyYml(yamlContent: string): WrilyConfig {
 }
 
 /**
+ * Token-budget defaults by review mode (Decision 3). Applied downstream when
+ * `.wrily.yml` `max_tokens` is unset.
+ *
+ * CALIBRATE before merge: these are placeholders — size against supabase token
+ * history. gantry's `--max-tokens` counts `input + output + cache_write` and
+ * excludes `cache_read`, so calibrate against exactly that accounting.
+ */
+export const DEFAULT_MAX_TOKENS_SINGLE = 2_000_000;
+export const DEFAULT_MAX_TOKENS_TEAM = 8_000_000;
+
+export function defaultMaxTokens(mode: ReviewMode): number {
+  return mode === 'team' ? DEFAULT_MAX_TOKENS_TEAM : DEFAULT_MAX_TOKENS_SINGLE;
+}
+
+/**
  * Layer env-var overrides on top of a parsed `.wrily.yml`.
  *
  * Precedence: env > .wrily.yml > built-in default.
  *
  * - `modeOverride` / `modelOverride` use `||` so an empty-string sentinel falls
  *   through to the cfg value.
- * - `maxBudgetOverride` uses `??` because `0` is a (degenerate but) valid
- *   non-null budget that must not be treated as falsy.
+ * - `maxTokens` uses `??` so `undefined` (no `MAX_TOKENS`) falls through to the
+ *   cfg value; any parsed positive integer wins.
  */
 export function applyEnvOverrides(cfg: WrilyConfig, env: RuntimeEnv): WrilyConfig {
   return {
     ...cfg,
     mode: env.modeOverride || cfg.mode,
     model: env.modelOverride || cfg.model,
-    max_budget_usd: env.maxBudgetOverride ?? cfg.max_budget_usd,
+    max_tokens: env.maxTokens ?? cfg.max_tokens,
     reply_feedback: env.replyFeedbackOverride || cfg.reply_feedback,
   };
 }

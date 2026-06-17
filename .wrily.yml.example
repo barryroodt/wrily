@@ -11,9 +11,9 @@
 # - team: always use agent-team mode with parallel reviewers
 # mode: auto
 
-# Maximum USD budget per review
-# Default: $5 for single mode, $15 for team mode
-# max_budget_usd: 15
+# Maximum token budget per review (positive integer; passed to gantry --max-tokens).
+# Default: 2,000,000 single mode / 8,000,000 team mode.
+# max_tokens: 2000000
 
 # Directory count threshold for auto-switching to team mode (default: 5)
 # team_threshold: 5

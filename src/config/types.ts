@@ -16,7 +16,7 @@ export type WrilyConfig = {
   mode: ReviewMode;
   team_threshold: number;
   team_threshold_unit: TeamThresholdUnit;
-  max_budget_usd: number | null;
+  max_tokens: number | null;
   ignore: string[];
   shared_skills: string[];
   request_changes: boolean;
@@ -49,11 +49,11 @@ export type RuntimeEnv = {
   scopeOverride: 'full' | 'delta' | '';
   modeOverride: '' | 'auto' | 'single' | 'team';
   modelOverride: string;
-  maxBudgetOverride: number | null;
+  /** Token-budget override from `MAX_TOKENS`; `undefined` when unset so the file value wins. */
+  maxTokens?: number;
   /**
    * Gantry binary path from `WRILY_GANTRY_BIN` (defaults to `'gantry'` on PATH
-   * at the composition root). `parseEnv` already surfaces this; the type lagged
-   * C2 (16f8228). The remaining RuntimeEnv token-shape migration is C3's.
+   * at the composition root).
    */
   wrilyGantryBin?: string;
   dryRun: boolean;
