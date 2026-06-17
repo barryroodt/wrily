@@ -10,3 +10,6 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+
+# wrily runtime scratch (digest etc.)
+.wrily/

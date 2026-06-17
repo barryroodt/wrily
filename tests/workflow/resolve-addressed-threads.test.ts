@@ -183,7 +183,12 @@ describe('workflow / resolveAddressedThreads', () => {
   });
 
   it('fail-open: GraphQL mutation 5xx → resolvedThreadIds=[], workflow does not fail', async () => {
-    vi.useFakeTimers();
+    const setTimeoutSpy = vi
+      .spyOn(global, 'setTimeout')
+      .mockImplementation(((fn: () => void) => {
+        fn();
+        return 0 as unknown as NodeJS.Timeout;
+      }) as typeof setTimeout);
     try {
       const agentRunner = new FakeAgentRunner({ stdout: RESOLVE_REPLY, stderr: '', exitCode: 0, durationMs: 0, tokenUsage: null });
 
@@ -211,9 +216,7 @@ describe('workflow / resolveAddressedThreads', () => {
       };
 
       const run = await workflow.createRun();
-      const promise = run.start({ inputData: initial });
-      await vi.runAllTimersAsync();
-      const result = await promise;
+    const result = await run.start({ inputData: initial });
 
       if (result.status !== 'success') {
         throw new Error(`workflow failed: ${(result as any).error?.message ?? 'unknown'}`);
@@ -225,7 +228,7 @@ describe('workflow / resolveAddressedThreads', () => {
       // Only programmer errors reaching the Step's catch trip resolveThreadsFailed.
       expect(final.resolveThreadsFailed).toBe(false);
     } finally {
-      vi.useRealTimers();
+      setTimeoutSpy.mockRestore();
     }
   });
 });

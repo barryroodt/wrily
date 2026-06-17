@@ -69,12 +69,12 @@ COPY --from=builder --chown=reviewer:reviewer /build/dist ./dist
 
 COPY --chown=reviewer:reviewer skills/ /home/reviewer/.claude/skills/
 
-# TODO(GC-A2): once todo A2 creates profiles/review/, copy it into the image:
-# COPY --chown=reviewer:reviewer profiles/review/ /app/profiles/review/
+COPY --chown=reviewer:reviewer profiles/review/ /app/profiles/review/
 
-# Team-mode role prompts live under the copied skills dir. teamRoles.ts resolves
-# templates relative to dist/ by default, but skills are copied to ~/.claude here,
-# not under /app — so point it at the actual location.
+# skills/ is relocated to ~/.claude (not under /app), so point the in-tree
+# invariant-skill lookup (stageSkillsStep -> wrilyInstallSkillsDir) at it.
+# profiles/review is resolved module-relative to dist/ (resolveProfileDir),
+# so it needs no env override.
 ENV WRILY_SKILLS_DIR=/home/reviewer/.claude/skills
 
 USER reviewer
