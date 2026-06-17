@@ -18,7 +18,7 @@ export type ReviewRunRecord = {
   model: string;
   review_mode: 'single' | 'team';
   scope: 'full' | 'delta';
-  max_budget_usd: number | null;
+  max_tokens: number | null;
   status: 'success' | 'budget_exceeded' | 'timeout' | 'failed';
   duration_ms: number;
   findings_posted: number | null;

@@ -56,6 +56,8 @@ export type RuntimeEnv = {
    * at the composition root).
    */
   wrilyGantryBin?: string;
+  /** Unknown-model escape hatch from `WRILY_ALLOW_UNKNOWN_MODEL=1`; persists unknown models with `cost_usd = 0` and a loud warn. */
+  allowUnknownModel: boolean;
   dryRun: boolean;
   prAuthorLogin: string;
   triggerSource: string;

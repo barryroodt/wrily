@@ -193,13 +193,13 @@ Push a new commit or comment \`/wrily review\` to retry.
 `,
   budget: (msg, commit) => `## Wrily Review — budget exceeded
 
-The review for commit \`${commit.slice(0, 7)}\` hit the configured \`max_budget_usd\` ceiling.
+The review for commit \`${commit.slice(0, 7)}\` hit the configured \`max_tokens\` ceiling.
 
 \`\`\`
 ${msg}
 \`\`\`
 
-Raise \`max_budget_usd\` in \`.wrily.yml\` or comment \`/wrily review\` to retry.
+Raise \`max_tokens\` in \`.wrily.yml\` (or \`MAX_TOKENS\`) or comment \`/wrily review\` to retry.
 
 <!-- auto-reviewer: failure=budget, commit=${commit} -->
 `,
