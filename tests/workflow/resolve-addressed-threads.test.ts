@@ -47,14 +47,14 @@ const baseEnv = {
   githubToken: 'gho_x', prNumber: 1, githubRepository: 'org/repo',
   baseBranch: 'main', commitSha: 'abc', sharedRepo: 'your-org/shared-wrily-skills', sharedToken: '',
   wrilyBotLogin: 'wrily', reviewRoundIndex: 0, scopeOverride: '' as const,
-  modeOverride: '' as const, modelOverride: '', maxBudgetOverride: null, dryRun: true,
+  modeOverride: '' as const, modelOverride: '', allowUnknownModel: false, dryRun: true,
   prAuthorLogin: 'human-dev', triggerSource: 'push', actor: 'human-dev',
   replyFeedbackOverride: '' as const,
 };
 
 const baseCfg = {
   model: 'opus', mode: 'single' as const, team_threshold: 5, team_threshold_unit: 'files' as const,
-  max_budget_usd: null, ignore: [], shared_skills: [], request_changes: false,
+  max_tokens: null, ignore: [], shared_skills: [], request_changes: false,
   style: 'terse' as const, sensitivity: 'minor' as const, reply_feedback: 'on' as const,
 };
 

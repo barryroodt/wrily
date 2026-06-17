@@ -97,6 +97,7 @@ describe('applyEnvOverrides', () => {
     prAuthorLogin: '',
     triggerSource: 'push',
     actor: '',
+    allowUnknownModel: false,
     ...over,
   });
 
