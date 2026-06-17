@@ -50,6 +50,12 @@ export type RuntimeEnv = {
   modeOverride: '' | 'auto' | 'single' | 'team';
   modelOverride: string;
   maxBudgetOverride: number | null;
+  /**
+   * Gantry binary path from `WRILY_GANTRY_BIN` (defaults to `'gantry'` on PATH
+   * at the composition root). `parseEnv` already surfaces this; the type lagged
+   * C2 (16f8228). The remaining RuntimeEnv token-shape migration is C3's.
+   */
+  wrilyGantryBin?: string;
   dryRun: boolean;
   prAuthorLogin: string;
   triggerSource: string;
