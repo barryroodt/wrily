@@ -1,7 +1,8 @@
 import { createStep } from '@mastra/core/workflows';
-import { writeFileSync, mkdtempSync, existsSync, readFileSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
-import { join } from 'node:path';
+import { writeFileSync, mkdtempSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import type { WorkflowState } from './state.js';
@@ -12,7 +13,7 @@ import { extractFindings } from '../post/extract.js';
 import { routeFindings } from '../post/route.js';
 import { renderReviewPrompt } from '../prompt/render.js';
 import { buildCloneUrl } from '../git/clone.js';
-import { bridgeSkills } from '../skills/loader.js';
+import { stageSkills } from '../skills/loader.js';
 import { isValidSharedSkillName } from '../skills/names.js';
 import { computeDiffRange, countTeamThresholdScope, applyIgnorePatterns, computeDiffFiles } from '../git/diff.js';
 import { resolveAddressedThreads } from '../post/resolveThreads.js';
@@ -24,7 +25,11 @@ import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
 import { buildReviewPromptContext } from './reviewContext.js';
-import { runTeamReview } from './teamReview.js';
+import { ratesForSlug, type ModelRates } from '../agent/models.js';
+// DEFAULT_TIMEOUT_MS relocates from pi.ts to gantry.ts per the spec (Decision in
+// "Component-level changes / src/agent"). gantry.ts is a sibling cutover todo;
+// this import resolves once it lands. [cross-todo dep — see commit note]
+import { DEFAULT_TIMEOUT_MS } from '../agent/gantry.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -35,6 +40,50 @@ export type WorkflowDeps = {
 };
 
 const GIT_TIMEOUT_MS = 120_000;
+
+/**
+ * Wrily's four invariant review-guard skills. The gantry profile injects this
+ * exact set; they are copied from wrily's own install tree and a user skill may
+ * never shadow one of these names.
+ */
+const INVARIANT_SKILLS = ['agent-team-review', 'code-review', 'confidence-rating', 'caveman-review'] as const;
+
+/**
+ * Token-budget defaults by review mode (Decision 3 — placeholders to calibrate
+ * against supabase token history before merge). Used when `.wrily.yml`
+ * `max_tokens` is unset.
+ */
+const DEFAULT_MAX_TOKENS_SINGLE = 2_000_000;
+const DEFAULT_MAX_TOKENS_TEAM = 8_000_000;
+
+/**
+ * Resolve wrily's in-tree `skills/` directory (the trusted invariant set).
+ * Prod sets `WRILY_SKILLS_DIR` (the Docker image copies `skills/` there);
+ * locally it sits two levels up from this module (`src/workflow/` → repo root).
+ */
+function wrilyInstallSkillsDir(): string {
+  const override = process.env.WRILY_SKILLS_DIR;
+  return override && override.length > 0
+    ? override
+    : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills');
+}
+
+/** USD cost for a token vector at the given per-MTok rates (0 when unknown). */
+function costUsd(
+  rates: ModelRates | undefined,
+  input: number,
+  output: number,
+  cacheRead: number,
+  cacheWrite: number,
+): number {
+  if (!rates) return 0;
+  return (
+    input * rates.input +
+    output * rates.output +
+    cacheRead * rates.cacheRead +
+    cacheWrite * rates.cacheWrite
+  ) / 1_000_000;
+}
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -236,38 +285,67 @@ export function makeSteps(deps: WorkflowDeps) {
     },
   });
 
-  const bridgeSkillsStep = createStep({
-    id: 'bridgeSkills',
+  const stageSkillsStep = createStep({
+    id: 'stageSkills',
     inputSchema: workflowStateSchema,
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const wanted = state.cfg.shared_skills ?? [];
-      if (!state.sharedPath || wanted.length === 0) {
-        console.log('[bridgeSkills] no shared skills to bridge');
-        return { ...state, loadedSkills: [] };
-      }
-      const destRoot = join(homedir(), '.claude', 'skills');
-      const loaded: string[] = [];
-      for (const name of wanted) {
-        if (!isValidSharedSkillName(name)) {
-          console.warn(`[bridgeSkills] invalid shared skill name "${name}" — skipping`);
-          continue;
-        }
-        const src = join(state.sharedPath, 'skills', name);
+      // Fresh per-run staging dir. The PR checkout is hostile: trusted skill
+      // content is assembled here and handed to gantry via --skills-dir; nothing
+      // is ever written into or resolved from the checkout's .claude/.
+      const stagingDir = mkdtempSync(join(tmpdir(), 'wrily-skills-'));
+
+      // 1. Invariant review guards from wrily's own install tree — the set the
+      //    gantry profile injects.
+      const invariantRoot = wrilyInstallSkillsDir();
+      const sources: string[] = [];
+      for (const name of INVARIANT_SKILLS) {
+        const src = join(invariantRoot, name);
         if (!existsSync(src)) {
-          console.warn(`[bridgeSkills] source missing for "${name}" at ${src} — skipping`);
+          console.warn(`[stageSkills] invariant skill "${name}" missing at ${src} — skipping`);
           continue;
         }
-        const dest = join(destRoot, name);
-        try {
-          await bridgeSkills(src, dest);
-          loaded.push(name);
-        } catch (err) {
-          console.warn(`[bridgeSkills] failed to copy "${name}": ${(err as Error).message}`);
-        }
+        sources.push(src);
       }
-      return { ...state, loadedSkills: loaded };
+
+      // 2. Name-validated user skills from the shared-repo clone, appended after
+      //    the invariant set. A user skill whose name collides with an invariant
+      //    skill is rejected (warn + skip): .wrily.yml cannot shadow the guards.
+      const invariantNames = new Set<string>(INVARIANT_SKILLS);
+      const wanted = state.cfg.shared_skills ?? [];
+      const loaded: string[] = [];
+      if (state.sharedPath && wanted.length > 0) {
+        for (const name of wanted) {
+          if (invariantNames.has(name)) {
+            console.warn(`[stageSkills] user skill "${name}" collides with an invariant skill — rejecting`);
+            continue;
+          }
+          if (!isValidSharedSkillName(name)) {
+            console.warn(`[stageSkills] invalid shared skill name "${name}" — skipping`);
+            continue;
+          }
+          const src = join(state.sharedPath, 'skills', name);
+          if (!existsSync(src)) {
+            console.warn(`[stageSkills] source missing for "${name}" at ${src} — skipping`);
+            continue;
+          }
+          sources.push(src);
+          loaded.push(name);
+        }
+      } else {
+        console.log('[stageSkills] no user skills to stage');
+      }
+
+      try {
+        await stageSkills(sources, stagingDir);
+      } catch (err) {
+        console.warn(`[stageSkills] failed to stage skills: ${(err as Error).message}`);
+      }
+
+      // loadedSkills carries USER skills only — they ride --inject-skill; the
+      // invariant set is injected by the gantry profile itself.
+      return { ...state, skillsStagingDir: stagingDir, loadedSkills: loaded };
     },
   });
 
@@ -291,8 +369,13 @@ export function makeSteps(deps: WorkflowDeps) {
           },
           deps.graphqlClient,
         );
-        const tmpDir = mkdtempSync(join(tmpdir(), 'wrily-'));
-        const digestPath = join(tmpDir, 'prior-feedback.json');
+        // The digest must be readable by gantry's workdir-confined tools, so it
+        // is the one artifact written into the checkout — under <repo>/.wrily/
+        // (the OS tmpdir location used before is unreachable by read_file).
+        const workdir = state.repoPath ?? mkdtempSync(join(tmpdir(), 'wrily-'));
+        const wrilyDir = join(workdir, '.wrily');
+        mkdirSync(wrilyDir, { recursive: true });
+        const digestPath = join(wrilyDir, 'prior-feedback.json');
         writeFileSync(digestPath, JSON.stringify(priorFeedback, null, 2), 'utf8');
         return { ...state, priorFeedback, digestFetchFailed: false, priorFeedbackDigestPath: digestPath };
       } catch (err) {
@@ -387,18 +470,25 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const agentResults =
-        state.reviewMode === 'team'
-          ? await runTeamReview(deps.agentRunner, state)
-          : [
-              await deps.agentRunner.run({
-                prompt: state.renderedPrompt!,
-                model: state.cfg.model,
-                maxBudgetUsd: state.cfg.max_budget_usd ?? 5,
-                workingDir: state.repoPath ?? '/tmp/repo',
-                env: process.env,
-              }),
-            ];
+      // resolveReviewStep narrows reviewMode to single|team; map auto defensively.
+      const mode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
+      const maxTokens =
+        state.cfg.max_tokens ?? (mode === 'team' ? DEFAULT_MAX_TOKENS_TEAM : DEFAULT_MAX_TOKENS_SINGLE);
+      // Post-cutover the team lives inside gantry: one run, one result. Per-role
+      // telemetry rides result.events; persistUsageStep unpacks it.
+      const result = await deps.agentRunner.run({
+        prompt: state.renderedPrompt!,
+        model: state.cfg.model,
+        mode,
+        workingDir: state.repoPath!,
+        maxTokens,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        skillsDir: state.skillsStagingDir,
+        extraSkills: state.loadedSkills,
+        unifyPromptPath: state.unifyPromptPath,
+        env: process.env,
+      });
+      const agentResults = [result];
       writeDebugOutput(agentResults);
       return { ...state, agentResults };
     },
@@ -576,55 +666,148 @@ export function makeSteps(deps: WorkflowDeps) {
       try {
         const status = deriveRunStatus(state);
         const agentResults = state.agentResults ?? [];
-        const totalDuration = agentResults.reduce((sum, r) => sum + r.durationMs, 0);
-        const totals = agentResults.reduce(
-          (acc, r) => {
-            const u = r.tokenUsage;
-            if (!u) return acc;
-            acc.input += u.inputTokens;
-            acc.output += u.outputTokens;
-            acc.cacheRead += u.cacheReadTokens ?? 0;
-            acc.cacheWrite += u.cacheWriteTokens ?? 0;
-            acc.cost += u.costUsd ?? 0;
-            return acc;
-          },
-          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
-        );
+        const result = agentResults[0];
+        const events = result?.events;
 
-        const run: ReviewRunRecord = {
+        // gantry runs one model per run; cost attribution keys on its slug.
+        const runSlug = result?.model ?? state.cfg.model;
+        const rates = ratesForSlug(runSlug);
+        const reviewMode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
+
+        // Fields shared by both mapping paths.
+        const base = {
           github_repo: state.env.githubRepository,
           pr_number: state.env.prNumber,
           commit_sha: state.env.commitSha,
           trigger_source: collapseTriggerSource(state.env.triggerSource),
           review_round: state.reviewRoundIndex ?? state.env.reviewRoundIndex ?? 0,
-          model: agentResults[0]?.model ?? state.cfg.model,
-          review_mode: state.reviewMode === 'team' ? 'team' : 'single',
+          review_mode: reviewMode,
           scope: state.reviewType === 'delta' ? 'delta' : 'full',
-          max_budget_usd: state.cfg.max_budget_usd ?? null,
+          max_tokens: state.cfg.max_tokens ?? null,
           status,
-          duration_ms: totalDuration,
           findings_posted: status === 'success' ? (state.findings ? state.findings.length : 0) : null,
-          input_tokens: totals.input,
-          output_tokens: totals.output,
-          cache_read_tokens: totals.cacheRead,
-          cache_write_tokens: totals.cacheWrite,
-          cost_usd: totals.cost,
-        };
+        } as const;
 
-        const subagents: SubagentRecord[] = agentResults.map((r, idx) => ({
-          role: state.reviewMode === 'team' ? `team-${idx}` : 'single',
-          model: r.model ?? state.cfg.model,
-          duration_ms: r.durationMs,
-          input_tokens: r.tokenUsage?.inputTokens ?? 0,
-          output_tokens: r.tokenUsage?.outputTokens ?? 0,
-          cache_read_tokens: r.tokenUsage?.cacheReadTokens ?? 0,
-          cache_write_tokens: r.tokenUsage?.cacheWriteTokens ?? 0,
-          cost_usd: r.tokenUsage?.costUsd ?? 0,
-        }));
+        let run: ReviewRunRecord;
+        let subagents: SubagentRecord[];
+
+        if (events && events.length > 0) {
+          // Decision 9: one SubagentRecord per subagent_done, plus a synthetic
+          // coordinator row computed by subtraction so the per-row sums reconcile
+          // exactly with the run record (closure invariant).
+          let totalInput = 0;
+          let totalOutput = 0;
+          let totalCacheRead = 0;
+          let totalCacheWrite = 0;
+          let runDuration = result?.durationMs ?? 0;
+          let sumInput = 0;
+          let sumOutput = 0;
+          let sumCacheRead = 0;
+          let sumCacheWrite = 0;
+          let coordinatorDuration = 0;
+          const rows: SubagentRecord[] = [];
+
+          for (const e of events) {
+            switch (e.event) {
+              case 'result':
+                totalInput = e.total_input;
+                totalOutput = e.total_output;
+                totalCacheRead = e.total_cache_read;
+                totalCacheWrite = e.total_cache_write;
+                runDuration = e.duration_ms;
+                break;
+              case 'subagent_done':
+                sumInput += e.input_tokens;
+                sumOutput += e.output_tokens;
+                sumCacheRead += e.cache_read;
+                sumCacheWrite += e.cache_write;
+                rows.push({
+                  role: e.name,
+                  model: runSlug,
+                  duration_ms: e.duration_ms,
+                  input_tokens: e.input_tokens,
+                  output_tokens: e.output_tokens,
+                  cache_read_tokens: e.cache_read,
+                  cache_write_tokens: e.cache_write,
+                  cost_usd: costUsd(rates, e.input_tokens, e.output_tokens, e.cache_read, e.cache_write),
+                });
+                break;
+              case 'agent_turn':
+                if (e.role === 'coordinator') coordinatorDuration += e.duration_ms;
+                break;
+              default:
+                break;
+            }
+          }
+
+          const coordInput = Math.max(0, totalInput - sumInput);
+          const coordOutput = Math.max(0, totalOutput - sumOutput);
+          const coordCacheRead = Math.max(0, totalCacheRead - sumCacheRead);
+          const coordCacheWrite = Math.max(0, totalCacheWrite - sumCacheWrite);
+          rows.push({
+            role: 'coordinator',
+            model: runSlug,
+            duration_ms: coordinatorDuration,
+            input_tokens: coordInput,
+            output_tokens: coordOutput,
+            cache_read_tokens: coordCacheRead,
+            cache_write_tokens: coordCacheWrite,
+            cost_usd: costUsd(rates, coordInput, coordOutput, coordCacheRead, coordCacheWrite),
+          });
+
+          subagents = rows;
+          run = {
+            ...base,
+            model: runSlug,
+            duration_ms: runDuration,
+            input_tokens: totalInput,
+            output_tokens: totalOutput,
+            cache_read_tokens: totalCacheRead,
+            cache_write_tokens: totalCacheWrite,
+            cost_usd: costUsd(rates, totalInput, totalOutput, totalCacheRead, totalCacheWrite),
+          };
+        } else {
+          // No events (fake runners): one aggregate row per result, role by mode,
+          // costs straight off the result's tokenUsage. Keeps workflow tests real.
+          const totals = agentResults.reduce(
+            (acc, r) => {
+              const u = r.tokenUsage;
+              if (!u) return acc;
+              acc.input += u.inputTokens;
+              acc.output += u.outputTokens;
+              acc.cacheRead += u.cacheReadTokens ?? 0;
+              acc.cacheWrite += u.cacheWriteTokens ?? 0;
+              acc.cost += u.costUsd ?? 0;
+              return acc;
+            },
+            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+          );
+          const totalDuration = agentResults.reduce((sum, r) => sum + r.durationMs, 0);
+          subagents = agentResults.map((r) => ({
+            role: reviewMode === 'team' ? 'coordinator' : 'single',
+            model: r.model ?? state.cfg.model,
+            duration_ms: r.durationMs,
+            input_tokens: r.tokenUsage?.inputTokens ?? 0,
+            output_tokens: r.tokenUsage?.outputTokens ?? 0,
+            cache_read_tokens: r.tokenUsage?.cacheReadTokens ?? 0,
+            cache_write_tokens: r.tokenUsage?.cacheWriteTokens ?? 0,
+            cost_usd: r.tokenUsage?.costUsd ?? 0,
+          }));
+          run = {
+            ...base,
+            model: agentResults[0]?.model ?? state.cfg.model,
+            duration_ms: totalDuration,
+            input_tokens: totals.input,
+            output_tokens: totals.output,
+            cache_read_tokens: totals.cacheRead,
+            cache_write_tokens: totals.cacheWrite,
+            cost_usd: totals.cost,
+          };
+        }
 
         await recordReviewRun(state.env, run, subagents);
-        // Mark so main.ts's failure-path persistence doesn't double-write
-        // if a later step (postToGitHub, resolveAddressedThreads) throws.
+        // Mark so main.ts's failure-path persistence doesn't double-write if a
+        // later step (postToGitHub, resolveAddressedThreads) throws.
         markUsagePersisted();
       } catch (err) {
         console.warn(`[persistUsage] failed: ${(err as Error).message}`);
@@ -637,7 +820,7 @@ export function makeSteps(deps: WorkflowDeps) {
     cloneRepoStep,
     loadConfigStep,
     cloneSharedStep,
-    bridgeSkillsStep,
+    stageSkillsStep,
     fetchDigestStep,
     resolveReviewStep,
     renderPromptStep,
