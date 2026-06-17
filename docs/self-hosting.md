@@ -78,6 +78,15 @@ git push origin v0.1.0
 
 If your org's GHCR packages default to private, make the package public or grant pull access to the App's installation — otherwise the Actions runner won't be able to pull the image.
 
+The image bundles the [gantry](https://github.com/barryroodt/gantry) review
+binary, fetched and SHA256-verified at Docker build time (version pinned in
+`.gantry-version`). There is no Node-side `@earendil-works/*` agent dependency
+to install — `pnpm install` pulls only wrily's own runtime deps.
+
+> **Local dev:** to run wrily against a locally-built gantry instead of the
+> image's bundled binary, set `WRILY_GANTRY_BIN` to the binary path (e.g. a
+> sibling checkout's `../gantry/target/release/gantry`).
+
 ### Add the Anthropic secret
 
 ```bash
@@ -86,7 +95,7 @@ gh secret set ANTHROPIC_API_KEY --env anthropic --body '<your-key>' --repo <your
 
 (Or via the UI: **Settings → Environments → anthropic → Add secret**.)
 
-To use a different provider, set that provider's API-key secret instead (e.g. `OPENAI_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`) and set `MODEL` to its slug (e.g. `openai/gpt-4o`). Bedrock authenticates via ambient AWS credentials.
+To use a different provider, set that provider's API-key secret instead (`OPENAI_API_KEY` or `GEMINI_API_KEY`) and set `MODEL` to its slug (e.g. `openai/gpt-4o`). Wrily's provider matrix is anthropic / openai / google.
 
 ---
 
@@ -221,7 +230,7 @@ A typical handoff message:
 - **Rotation** (App private key, webhook secret) — [`RUNBOOK.md → Rotation`](../integrations/cloudflare-worker/RUNBOOK.md#rotation).
 - **Observability** — `wrangler tail`, Cloudflare dashboard, GitHub App Recent Deliveries panel. Details in the RUNBOOK.
 - **Upgrading Wrily** — `git pull upstream main` on your fork, resolve any conflicts in the workflow files (the references you swapped in step 1 will reappear in some upstream PRs), tag a new `v*` release, redeploy the Worker only if `integrations/cloudflare-worker/` changed.
-- **Cost** — Anthropic API spend per review (caps configurable via `max_budget_usd` in `.wrily.yml`). Cloudflare Worker invocations + GitHub Actions minutes both fall well within free tiers for typical org volume.
+- **Cost** — Anthropic API spend per review (token caps configurable via `max_tokens` in `.wrily.yml`). Cloudflare Worker invocations + GitHub Actions minutes both fall well within free tiers for typical org volume.
 
 ## Optional: cost tracking
 

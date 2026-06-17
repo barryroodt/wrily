@@ -58,13 +58,13 @@ No workflow YAML, no secrets, no Actions / GHCR perms to grant per-repo.
 Repo root. All keys optional — defaults are sensible.
 
 ```yaml
-model: anthropic/claude-opus-4-8  # any pi provider/model slug (e.g. openai/gpt-4o)
+model: anthropic/claude-opus-4-8  # anthropic, openai, or google slug (e.g. openai/gpt-4o)
 mode: auto               # auto | single | team
 team_threshold: 5        # auto-flips to team mode at this many files/folders
 team_threshold_unit: files # files (default) | folders
 style: terse             # terse (caveman-review) | verbose (full prose)
 sensitivity: important   # important (default) | minor | critical
-max_budget_usd: 15       # override the per-mode default
+max_tokens: 8000000      # token budget; override the per-mode default
 request_changes: false   # true → Wrily can block merge; false → COMMENT-only
 
 ignore:
@@ -95,7 +95,7 @@ PR opens → `Wrily / review — In progress…` should appear in the checks pan
 
 - Docker
 - `gh` CLI (authenticated: `gh auth login`)
-- A provider API key — one of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_API_KEY`, `MISTRAL_API_KEY`, `AZURE_OPENAI_API_KEY`, `CLOUDFLARE_API_KEY` (or AWS credentials for Bedrock)
+- A provider API key — one of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (anthropic / openai / google)
 
 ### Setup
 
@@ -242,8 +242,8 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
         node /app/dist/main.js  (entrypoint)
         ├── parseEnv()           — Zod-validated runtime env
         ├── parseWrilyYml()     — .wrily.yml config + defaults
-        ├── applyEnvOverrides()  — MODE/MODEL/MAX_BUDGET env > .wrily.yml > default
-        ├── selectRunner(cfg.model) — provider-agnostic in-process pi runner
+        ├── applyEnvOverrides()  — MODE/MODEL/MAX_TOKENS env > .wrily.yml > default
+        ├── GantryRunner          — spawns the gantry subprocess (NDJSON event stream)
         └── Mastra workflow (src/workflow/)
               ├── cloneRepo               — git-clone consumer PR into ephemeral /tmp dir; checkout commit SHA
               ├── cloneShared             — best-effort your-org/shared-wrily-skills clone for org context (skips on missing token)
@@ -252,7 +252,7 @@ Webhook receiver implementations live in [`integrations/`](integrations/):
               ├── resolveReview           — SCOPE_OVERRIDE → reviewType; reviewRoundIndex from prior handoff markers;
               │                             delta merge-filter (excludes files merged in from base since last review)
               ├── renderPrompt            — typed prompt template (forbids gh posting, JSON-in-fence only)
-              ├── agentCall               — in-process pi session (PiRunner, any provider); AgentTimeoutError / AgentBudgetExceededError on timeout / budget abort
+              ├── agentCall               — runs the gantry subprocess (GantryRunner); AgentTimeoutError / AgentBudgetExceededError on timeout / budget abort
               ├── extractFindings         — JSON-in-fence → discriminated-union Review (delta-clean prose fallback)
               ├── routeFindings           — new_comment / reply_in_thread / suppress; re-raise unknown threads
               ├── postToGitHub            — watermark dedupe → REST review POST → 422 per-comment fallback; DRY_RUN guards writes
@@ -269,7 +269,7 @@ Source layout under `src/`:
 | `config/` | `RuntimeEnv` + `WrilyConfig` Zod schemas + `applyEnvOverrides` (`env.ts`, `wrilyYml.ts`, `types.ts`) |
 | `prompt/` | Prompt templates + typed renderer + instruction builders |
 | `post/` | Findings extract → route → GitHub REST (review POST + reply-in-thread + thread resolve) + body renderer + failure fallback |
-| `agent/` | `AgentRunner` interface + `PiRunner` (in-process pi; `AgentTimeoutError`/`AgentBudgetExceededError`) + `modelResolver` + factory |
+| `agent/` | `AgentRunner` interface + `GantryRunner` (gantry subprocess; `AgentTimeoutError`/`AgentBudgetExceededError`) + `modelResolver` + `models` manifest |
 | `git/` | Diff range + ignore-pattern + team-threshold scope + `intersectFileLists` + `computeDiffFiles` |
 | `skills/` | `bridgeSkills` helper for copying shared skills |
 | `workflow/` | Mastra `createStep` definitions (cloneRepo → … → resolveAddressedThreads) + `createWorkflow` assembly |
@@ -281,10 +281,10 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 | Var | Required | Notes |
 |---|---|---|
 | `GITHUB_TOKEN`, `PR_NUMBER`, `GITHUB_REPOSITORY`, `BASE_BRANCH`, `COMMIT_SHA` | yes | Workflow inputs |
-| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GOOGLE_CLOUD_API_KEY` / `MISTRAL_API_KEY` / `AZURE_OPENAI_API_KEY` / `CLOUDFLARE_API_KEY`) | one | Provider auth (Bedrock via AWS creds) |
+| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY`) | one | Provider auth (anthropic / openai / google) |
 | `SHARED_REPO` | no | Optional shared skills repo in owner/repo form |
 | `SHARED_TOKEN` | no | Shared-skills clone token; skipped silently when empty |
-| `MODE`, `MODEL`, `MAX_BUDGET` | no | Layer over `.wrily.yml` |
+| `MODE`, `MODEL`, `MAX_TOKENS` | no | Layer over `.wrily.yml` |
 | `SCOPE_OVERRIDE` | no | `'full'` / `'delta'` — re-request override |
 | `PR_AUTHOR_LOGIN` | no | Used by digest `is_authorized` |
 | `WRILY_TRIGGER_SOURCE` | no | `'push'` (default) / `'re_request'` |
@@ -292,8 +292,10 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 | `WRILY_BOT_LOGIN` | no | Default `wrily` |
 | `REVIEW_ROUND_INDEX` | no | Workflow computes from prior handoff markers; this env is a fallback |
 | `DRY_RUN` | no | `'true'` → log body instead of posting |
-| `WRILY_AGENT_TIMEOUT_MS` | no | Override claude CLI timeout (default 30 min) |
+| `WRILY_AGENT_TIMEOUT_MS` | no | Override gantry subprocess timeout (default 30 min) |
 | `WRILY_DEBUG_AGENT_OUTPUT` | no | Path to dump raw model stdout/stderr |
+| `WRILY_GANTRY_BIN` | no | Path to a local gantry binary (default: the binary bundled in the image) |
+| `WRILY_ALLOW_UNKNOWN_MODEL` | no | `'1'` → allow a model slug absent from the rate manifest (cost rows = 0) |
 
 ---
 
