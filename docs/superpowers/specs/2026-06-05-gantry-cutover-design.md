@@ -2,11 +2,13 @@
 
 | | |
 |---|---|
-| Status | Draft (awaiting review) |
-| Date | 2026-06-05 |
+| Status | Draft v3 — reconciled to gantry v0.1.0 as-shipped contract (awaiting review) |
+| Date | 2026-06-17 (v2: 2026-06-11; v1: 2026-06-05) |
 | Plan | Created post-approval via `superpowers:write-plan` |
 | Author | Barry Roodt (with the brainstorming agent) |
-| Supersedes | nothing — extends the PR #32 pi-cutover work |
+| Supersedes | v2 — folds in gantry v0.1.0 as-shipped deltas (exit codes, schema_version, budget formula) |
+| Leverage | Gantry is owned by the same author; its CLI/contract may change where general-purpose (see "Gantry pre-flight contract changes"). Neither project is in active use — no backward compatibility constraints. |
+| As-shipped | Gantry **v0.1.0** (`d9e885d`) ships G1–G8; this revision reconciles the spec to the shipped contract. Handoff: `solo://proj/11/scratchpad/gantry-v0-1-0-cutove--49`. |
 
 ## Summary
 
@@ -14,12 +16,19 @@ Replace wrily's in-process `@earendil-works/pi-coding-agent` runtime
 with the [gantry](https://github.com/barryroodt/gantry) standalone agent
 harness, consumed as a subprocess and parsed from its NDJSON event
 stream. Wrily owns its own copy of the gantry review profile from day
-one. Path A: single-PR full cutover, validated by wrily reviewing its
-own cutover PR. The provider matrix narrows to gantry's three
-(`anthropic` / `openai` / `google`); the six others wrily currently
-declares (`google-vertex`, `mistral`, `azure-openai-responses`,
-`cloudflare-workers-ai`, `cloudflare-ai-gateway`, Amazon Bedrock) are
-dropped, with the intent to add adapters upstream in gantry later.
+one. Path A: single-PR full cutover, validated by running the branch's
+wrily via `local_cli` against the cutover PR itself. The provider
+matrix narrows to gantry's three (`anthropic` / `openai` / `google`);
+the six others wrily currently declares (`google-vertex`, `mistral`,
+`azure-openai-responses`, `cloudflare-workers-ai`,
+`cloudflare-ai-gateway`, Amazon Bedrock) are dropped, with the intent
+to add adapters upstream in gantry later.
+
+Budgets are re-keyed in **tokens** end-to-end (`.wrily.yml max_tokens`),
+matching gantry's native budget unit and the planned tokens-only
+persistence direction. USD never appears between config and the
+subprocess; it is computed only at persistence/reporting time from the
+`src/agent/models.ts` rate manifest.
 
 ## Why
 
@@ -27,79 +36,201 @@ Four motivations, all weighted equally:
 
 1. **Shed wrily complexity.** Gantry's `team` mode + `profiles/review`
    subsume `src/workflow/teamReview.ts`, `src/workflow/teamRoles.ts`,
-   `src/workflow/reviewContext.ts`, and most of `src/agent/pi.ts` —
-   ~15-18 KB of TS deletable.
+   the unify half of `src/workflow/reviewContext.ts`, and most of
+   `src/agent/pi.ts` — ~15-18 KB of TS deletable.
 2. **Adopt the in-house runtime.** Gantry is a sibling project; wrily
    consuming it removes a third-party dep (`@earendil-works/*`) and
    dogfoods the harness.
-3. **Capability gains.** Copy-on-write workspace isolation
-   (`--isolate`), output compression at the tool boundary, the `loop`
-   mode, an NDJSON event stream that's a clean source for live
-   observability and persistence.
+3. **Capability gains.** Copy-on-write workspace isolation (`--isolate`,
+   enabled in wrily's profile — see Decision 11), output compression at
+   the tool boundary, an NDJSON event stream that's a clean source for
+   live observability and persistence.
 4. **Long-term portability.** Gantry's subprocess + NDJSON contract is
    language-agnostic — wrily could move off Node entirely in the future
    if it ever made sense to.
 
+## Gantry pre-flight contract changes
+
+These land in gantry (separate PRs there) **before** wrily PR1
+implementation starts. All are general-purpose harness features — none
+encodes review/wrily semantics.
+
+| # | Change | Rationale |
+|---|---|---|
+| G1 | Release pipeline: tagged releases with `gantry-<tag>-x86_64-unknown-linux-gnu.tar.gz` + `gantry-<tag>-aarch64-unknown-linux-gnu.tar.gz` + `SHA256SUMS`. **Pinned layout contract:** each tarball contains a single member `gantry` at archive root (flat, no directory prefix). | Wrily's Dockerfile extracts with `tar -xzf … -C /usr/local/bin gantry`; the flat layout is load-bearing. |
+| G2 | Provider slug rename: `gemini/` → `google/` (env var stays `GEMINI_API_KEY`; base-URL override stays `GEMINI_API_BASE`). | Wrily's canonical slug form is `google/<model>`; `google` is also the conventional provider id (OpenRouter, pi-ai). Eliminates a translation layer in wrily. No aliasing — clean rename. |
+| G3 | `--unify-file <path>` and `--compose-file <path>` flag overrides, symmetric with the existing `--system-file` / `--subagent-system-file`. Explicit flag overrides the profile value, per gantry's existing precedence rule. | Lets a consumer render per-run dynamic content into the unify/compose phases without templating the profile directory. Wrily's repeat-review contract (digest-driven actions) rides this. |
+| G4 | `--skills-dir <dir>` (default: `<workdir>/.claude/skills`). Governs both `--inject-skill` resolution and the `skill_load` tool. | Decouples trusted skill content from the (potentially attacker-controlled) workdir. A review harness pointed at a PR checkout must not resolve injected prompts from that checkout. |
+| G5 | Event telemetry: `subagent_done` gains `cache_read`, `cache_write`, `duration_ms`; `agent_turn` gains `duration_ms` (wall time of that model call). | Consumers reconstructing per-role cost rows need cache tokens and durations; gantry already has both at emission time. |
+| G6 | Team-mode budget slices: the coordinator distributes the remaining global budget across spawned subagents; a subagent exceeding its slice is failed individually (`subagent_failed`, `reason: "budget"`) and the run continues. The run exits `budget` only when the **global** cap is hit. | Preserves partial-result resilience: today wrily drops a budget-tripped reviewer and unifies survivors. A global-only cap would turn one runaway subagent into a dead run. |
+| G7 | Document the budget accounting formula for `--max-tokens`. Recommendation: count uncached `input + output + cache_write`; exclude `cache_read` (≈10% of cost, would otherwise dominate the count on long cache-heavy runs and make budgets provider-cache-sensitive). | Wrily's defaults are sized against this formula; whatever gantry pins, it must be documented. |
+| G8 | Pin event `role` semantics in the README event table: `coordinator` for coordinator turns (team mode), the subagent's `name` for subagent turns, `single` in single mode. | Wrily's persistence mapping keys per-role accumulation on this. |
+
+First gantry release tag (e.g. `v0.1.0`) cut after G1–G8 land.
+
 ## Locked decisions
 
 1. **Full parity in one PR.** Path A — single-shot cutover. Wrily renders
-   the prompt, spawns `gantry --profile profiles/review --mode team`,
-   parses the NDJSON stream, and the existing post/persistence flow
-   takes over. Validated by wrily reviewing its own cutover PR.
+   the prompt, spawns `gantry --profile profiles/review`, parses the
+   NDJSON stream, and the existing post/persistence flow takes over.
 
 2. **Provider matrix narrows to gantry's three.** `anthropic`,
    `openai`, `google` (Gemini) stay. `google-vertex`, `mistral`,
    `azure-openai-responses`, `cloudflare-workers-ai`,
    `cloudflare-ai-gateway`, Amazon Bedrock are removed from
-   `src/config/providers.ts`. Upstream gantry contributions will
-   re-add them on the gantry side later (not part of this PR).
+   `src/config/providers.ts`, including the Bedrock-ambient-AWS branch
+   of `hasAnyProviderAuth`. Upstream gantry contributions re-add them
+   on the gantry side later (not part of this PR). With G2, wrily's
+   canonical `google/<model>` slugs pass to `--model` verbatim — no
+   translation layer exists anywhere.
 
-3. **Gantry binary distribution: prebuilt release artifact.** Wrily
-   pulls a tagged release tarball from gantry's GitHub Releases
-   (containing `gantry`), SHA256-verifies it, and copies the binary
-   into the wrily Docker image. No Rust toolchain in wrily's build.
-   Prerequisite: gantry ships a release pipeline (in progress).
+3. **Budgets are tokens, end-to-end.** `.wrily.yml max_budget_usd` is
+   replaced by `max_tokens` (positive integer); env override `MAX_BUDGET`
+   becomes `MAX_TOKENS`. `AgentRunOptions.maxBudgetUsd` becomes
+   `maxTokens`. The value passes to gantry's `--max-tokens` verbatim —
+   no USD↔token conversion exists anywhere. Defaults:
+   `DEFAULT_MAX_TOKENS_SINGLE = 2_000_000`,
+   `DEFAULT_MAX_TOKENS_TEAM = 8_000_000` — placeholders to be
+   calibrated against supabase token history before merge.
+   Gantry shipped the recommended G7 formula verbatim: `--max-tokens`
+   counts `input + output + cache_write` and **excludes `cache_read`** —
+   size both defaults against exactly this.
+   `AgentBudgetExceededError` semantics shift from "USD budget" to
+   "token budget"; message text updated, class name and
+   `stdout`/`stderr` fields unchanged (the `persist/failure.ts`
+   name-matching and `post/failureFallback.ts` instanceof contracts
+   survive untouched). Team-mode resilience is preserved by G6
+   (per-subagent slices) instead of wrily-side budget splitting.
+   PR1 includes a **narrow** supabase migration renaming
+   `max_budget_usd` → `max_tokens` (bigint) on `review_runs`; the full
+   tokens-only migration (dropping `cost_usd` from the write path)
+   remains the follow-up.
 
-4. **Wrily owns its review profile.** `profiles/review/` lives in
+4. **Gantry binary distribution: prebuilt release artifact.** Wrily
+   pulls a tagged release tarball from gantry's GitHub Releases,
+   SHA256-verifies it against `SHA256SUMS`, and copies the binary into
+   the wrily Docker image. No Rust toolchain in wrily's build.
+   Prerequisite: G1.
+
+5. **Wrily owns its review profile.** `profiles/review/` lives in
    wrily's tree as a first-class copy, initially forked from gantry's
    `profiles/review/`. Decoupled from gantry's release cadence.
-   Divergence allowed.
+   Divergence allowed — and required on day one: the
+   `REVIEWER_SECURITY_PREAMBLE` from `teamRoles.ts` is folded into
+   **both** `system.md` and `subagent.md` (single mode loads only
+   `system.md`; the guards must not be team-mode-only).
 
-5. **NDJSON consumption is streaming, behind the existing
-   `AgentRunner` interface.** A new `GantryRunner` parses events as
-   they arrive, fires per-event hooks (persistence, logging,
-   observability), and returns the same `AgentResult` shape the
-   workflow consumes today. The fake-runner test seam stays intact.
+6. **Review mode passes through; single mode survives.**
+   `resolveReviewStep`'s `mode: single|team|auto` + `team_threshold`
+   logic is unchanged; `state.reviewMode` maps directly to gantry's
+   `--mode single|team` (overriding the profile's `mode = "team"`
+   default, which gantry's precedence rules already support). Single
+   mode uses `system.md` + the rendered task prompt, which carries the
+   full JSON output contract exactly as today (`render.ts` note: "the
+   agent emits JSON only"). `review_mode` persistence
+   (`ReviewRunRecord`) and the watermark `mode=` field (`body.ts`) keep
+   their existing inputs.
 
-6. **Model validation + cost rates live in one static manifest** at
-   `src/agent/models.ts`. `modelResolver.ts` keeps its public API but
-   swaps `ModelLookup` from pi's `ModelRegistry` to a tiny wrapper over
-   the manifest. Unknown-model escape hatch: `WRILY_ALLOW_UNKNOWN_MODEL=1`.
+7. **NDJSON consumption is streaming, behind the existing
+   `AgentRunner` interface — constructed at the composition root.**
+   `GantryRunner` is instantiated once in `main.ts` with **static**
+   deps only (`binary`, `profileDir`); all per-run inputs ride
+   `AgentRunOptions` (see "Interface changes"). It parses events as
+   they arrive, fires per-event hooks (logging/observability), buffers
+   the event list, and returns it on `AgentResult.events`. The runner
+   holds no per-run state across calls. The fake-runner test seam
+   (`WorkflowDeps.agentRunner`) is untouched; fakes simply return
+   results without `events`.
 
-7. **Persistence: full mapping, batched flush.** `subagent_done` events
-   become `SubagentRecord` rows; an aggregated synthetic `coordinator`
-   row captures compose + unify costs. Row count matches today's
-   behaviour. Streaming flush (one Supabase write per event) is
-   deferred to a follow-up PR alongside the tokens-only schema
-   migration.
+8. **Model validation + cost rates live in one static manifest** at
+   `src/agent/models.ts` (slug, aliases, per-MTok rates for
+   input/output/cache-read/cache-write), seeded from the models
+   currently documented for the three retained providers.
+   `modelResolver.ts` keeps its public API; `ModelLookup` wraps the
+   manifest; the `ALIASES` map moves into the manifest rows.
+   **Resolution site:** `GantryRunner.run()` calls `resolveModel()` as
+   its first act (mirroring where `defaultPiSessionFactory` did it) —
+   raw aliases like `opus` never reach the subprocess.
+   Unknown-model escape hatch: `WRILY_ALLOW_UNKNOWN_MODEL=1` (parsed in
+   `env.ts`, not ad-hoc `process.env` reads); unknown models persist
+   with `cost_usd = 0` and a loud warn.
 
-8. **Skills move into the workdir.** `bridgeSkillsStep` writes to
-   `${state.repoPath}/.claude/skills/<name>/` instead of
-   `~/.claude/skills/<name>/`. Wrily's profile.toml declares the
-   invariant skill set; user-supplied skills from `.wrily.yml` become
-   appended `--inject-skill <name>` flags. Eliminates a global-state
-   foot-gun in CI.
+9. **Persistence: full mapping, batched flush, closure by
+   subtraction.** `subagent_done` events become `SubagentRecord` rows
+   (tokens/cache/duration from the event per G5, `role` = subagent
+   name). The synthetic `coordinator` row is computed as
+   **`result` totals − Σ subagent rows** (floored at 0 per field), so
+   per-row sums always reconcile exactly with the run record;
+   coordinator `duration_ms` = Σ coordinator-role `agent_turn.duration_ms`.
+   Role names become semantic (`correctness`, `api-conventions`, …) and
+   row count varies with the model-composed roster — an accepted
+   consumer-visible change from today's deterministic `team-0..N`.
+   When `AgentResult.events` is absent (fakes), `persistUsageStep`
+   writes one aggregate row per result (role = review mode), keeping
+   existing workflow tests meaningful. Streaming flush (one Supabase
+   write per event) is deferred to the follow-up PR alongside the
+   tokens-only schema migration.
 
-9. **Failure mapping is direct.** Gantry's `result.exit` translates to:
-   `ok` → success path; `budget` → `AgentBudgetExceededError`;
-   `timeout` → `AgentTimeoutError`; `error` / `config` → generic
-   `Error`. Both existing error classes already carry `stdout` +
-   `stderr` — populated from buffered `assistant_text` events.
+10. **Skills are staged outside the workdir; the workdir is treated as
+    hostile.** A fresh `mkdtemp` staging directory is assembled per
+    run: wrily's four invariant skills (`agent-team-review`,
+    `code-review`, `confidence-rating`, `caveman-review`) copied from
+    wrily's own install tree (`skills/`), plus name-validated user
+    skills from the shared-repo clone. A user skill whose name collides
+    with an invariant skill is rejected (warn + skip) — `.wrily.yml`
+    cannot shadow the review guards. The staging dir passes to gantry
+    via `--skills-dir` (G4); user skills append as `--inject-skill`
+    flags after the profile's invariant set. Nothing is ever written
+    into the PR checkout's `.claude/`, and nothing is ever resolved
+    from it. The home-directory bridging foot-gun and the
+    PR-ships-a-poisoned-skill vector both disappear.
 
-10. **Gantry version pinning lives in `.gantry-version`** at the repo
+11. **Isolation on.** Wrily's `profile.toml` sets `isolate = true`:
+    the run executes against a copy-on-write shadow of the checkout
+    (recursive-copy fallback guarantees availability in CI
+    containers). Allowlisted-but-mutating commands (`git checkout`,
+    …) cannot corrupt the real checkout mid-review, and the terminal
+    `changes` event gives a free audit trail. Motivation #3 is now
+    actually exercised.
+
+12. **Failure mapping is direct, with wrily-side wedge protection.**
+    Gantry's `result.exit` maps per the table below (full exit set as
+    shipped in v0.1.0: `ok`=0, `error`=1, `budget`=2, `timeout`=3,
+    `config`=4, `rate_limited`=5). **`rate_limited` (5) is recoverable**:
+    `GantryRunner` does a bounded backoff-retry honoring the terminal
+    `error` event's `retry_after_ms` hint, capped by the remaining
+    timeout budget; on exhaustion it throws `AgentRateLimitedError`.
+    Separately, a watchdog at `timeoutMs + 30s` grace handles a wedged
+    child: on trip, SIGTERM, SIGKILL after 5s, throw `AgentTimeoutError`.
+    If stdout reaches EOF without a `result` event, synthesize the
+    outcome from the process exit code via the **same full table**
+    (so 4→config, 5→rate_limited are not mislabelled "generic error")
+    using the buffered text. A wedged or crashed gantry can never leave
+    wrily waiting for the CI reaper. Note: a `config`-exit run emits no
+    `start` (hence no `schema_version`) — the EOF path keys on exit code
+    alone, not on having seen a `start`.
+
+13. **Gantry version pinning lives in `.gantry-version`** at the repo
     root. Dockerfile reads it via `ARG GANTRY_VERSION`. A weekly cron
     workflow opens a PR when the pinned version drifts from gantry's
     latest GitHub release.
+
+14. **Dynamic review context reaches gantry through two channels.**
+    (a) The task prompt (`renderedPrompt`, written to a tmp file
+    outside the workdir, passed via `--prompt-file`) — carries the
+    diff instructions, style/sensitivity, and (single mode) the full
+    output contract, as today. (b) A **per-run rendered unify prompt**
+    (team mode), written to the same tmp dir and passed via
+    `--unify-file` (G3) — carries the full four-action JSON contract
+    (`new_comment` / `reply_in_thread` / `suppress` / `resolve_thread`),
+    the digest instructions, and the style/sensitivity/delta-clean/
+    confidence instructions that today ride
+    `UNIFY_REVIEW_PROMPT_TEMPLATE`. The `REVIEWER_REPORTS` /
+    `REVIEWER_COUNT` placeholders are dropped — gantry supplies
+    subagent reports to the unify phase itself. The prior-feedback
+    digest JSON is written to `<workdir>/.wrily/prior-feedback.json`
+    (it must be readable by gantry's **workdir-confined** tools; the
+    OS tmpdir location used today would be unreachable by `read_file`).
 
 ## Architecture
 
@@ -108,24 +239,53 @@ After the cutover the runtime topology is:
 ```
 .wrily.yml + env → config/env.ts (RuntimeEnv)
                 ↓
-workflow/steps.ts (Mastra) ─→ render prompt
-                          → spawn `gantry --profile profiles/review --mode team
-                                          --model <slug> --workdir <repo>
-                                          --prompt-file <tmp> --max-tokens <n>
-                                          --timeout-ms <n>
-                                          --inject-skill <user-skill-1> …`
-                          → GantryRunner consumes NDJSON on stdout
-                            • streams hooks (persistence rows, logs)
-                            • buffers final unify JSON → AgentResult.stdout
-                            • maps result.exit → AgentResult or thrown error
-                          → existing extractFindings / route / post / persist
+workflow/steps.ts (Mastra)
+  → stage skills into mkdtemp dir (invariant set + user skills)
+  → write digest to <repo>/.wrily/prior-feedback.json
+  → render task prompt → tmp/prompt.md
+  → render unify prompt → tmp/unify.md          (team mode only)
+  → runner.run(...)  [GantryRunner, injected via WorkflowDeps]
+      spawns: gantry --profile <wrily>/profiles/review
+                     --mode <single|team>
+                     --model <canonical slug>
+                     --workdir <repo>
+                     --prompt-file tmp/prompt.md
+                     --unify-file tmp/unify.md   (team mode)
+                     --skills-dir <staging>
+                     --inject-skill <user-skill-1> …
+                     --max-tokens <cfg.max_tokens>
+                     --timeout-ms <DEFAULT_TIMEOUT_MS>
+      • consumes NDJSON on stdout, streams hooks (logs/observability)
+      • buffers events; returns them on AgentResult.events
+      • maps result.exit → AgentResult or thrown error
+  → existing extractFindings / route / post / persist
 ```
 
-The `AgentRunner` interface (`run({prompt, model, ...}) → AgentResult`)
-is the sole seam; the rest of wrily doesn't know whether the runner is
-pi or gantry. The fake runners (`FakeAgentRunner`,
-`SequenceFakeAgentRunner`) continue to satisfy the interface for
+The `AgentRunner` interface remains the sole seam; the rest of wrily
+doesn't know whether the runner is gantry or a fake. `FakeAgentRunner`
+and `SequenceFakeAgentRunner` continue to satisfy the interface for
 workflow tests.
+
+## Interface changes (`src/agent/runner.ts`)
+
+`AgentRunOptions`:
+
+| Field | Change |
+|---|---|
+| `maxBudgetUsd` | **Replaced** by `maxTokens: number`. |
+| `systemPrompt` | **Removed** — only consumer was `teamReview.ts` (deleted). |
+| `mode: 'single' \| 'team'` | **New.** Forwarded to `--mode`. |
+| `extraSkills?: string[]` | **New.** User skill names → `--inject-skill` flags. |
+| `skillsDir?: string` | **New.** Staging dir → `--skills-dir`. |
+| `unifyPromptPath?: string` | **New.** Rendered unify file → `--unify-file` (team mode). |
+| `prompt`, `model`, `workingDir`, `env`, `timeoutMs` | Unchanged. |
+
+`AgentResult`:
+
+| Field | Change |
+|---|---|
+| `events?: AgentEvent[]` | **New, optional.** The buffered NDJSON event list. Fakes omit it. |
+| everything else | Unchanged. |
 
 ## Component-level changes
 
@@ -133,40 +293,63 @@ workflow tests.
 
 | File | Disposition |
 |---|---|
-| `runner.ts` | Unchanged — the `AgentRunner` interface is the seam. |
-| `factory.ts` | Deleted. The factory returned `new PiRunner()` unconditionally; replace with a direct `new GantryRunner()` at the workflow construction site. |
-| `pi.ts` | Deleted. |
-| `gantry.ts` | **New.** Implements `AgentRunner`. Spawns gantry; consumes NDJSON streaming; returns `AgentResult`. See "GantryRunner" below. |
-| `models.ts` | **New.** The static manifest (slug + aliases + rates) backing both `modelResolver.ts` and cost computation. |
-| `modelResolver.ts` | Keep public API. `ModelLookup` impl swaps to wrap `models.ts`. `ALIASES` map moves into `models.ts` (one row per slug carries its aliases). |
-| `fake.ts` | Unchanged. |
-| `errors.ts` | Unchanged. |
+| `runner.ts` | Extended per "Interface changes" above. |
+| `factory.ts` | Deleted. `main.ts` constructs `new GantryRunner({ binary, profileDir })` directly. |
+| `pi.ts` | Deleted. `DEFAULT_TIMEOUT_MS` (and its below-CI-ceiling rationale comment) moves to `gantry.ts`. |
+| `gantry.ts` | **New.** Implements `AgentRunner`. See "GantryRunner" below. |
+| `models.ts` | **New.** Static manifest: canonical slug, aliases, per-MTok rates (input / output / cache-read / cache-write). Backs `modelResolver` and cost computation. |
+| `modelResolver.ts` | Keep public API. `ModelLookup` impl wraps `models.ts`; `ALIASES` moves into manifest rows. `WRILY_ALLOW_UNKNOWN_MODEL` honored here. |
+| `fake.ts` | Minor: signature follows `AgentRunOptions` changes; optionally accepts canned `events` for persistence tests. |
+| `errors.ts` | Budget error message text → tokens. **New `AgentRateLimitedError`** (`retryAfterMs`, `stdout`, `stderr`) thrown on exit-5 retry exhaustion; it falls through `classifyFailure`'s default → `'failed'` status (a dedicated status is a follow-up), so `persist/failure.ts` stays untouched. Existing class names/signatures otherwise unchanged. |
 
 ### `src/workflow/`
 
 | File | Disposition |
 |---|---|
-| `steps.ts` | The `agentCallStep` is rewritten to call a single `runner.run()` with the team prompt; the today-branching on `reviewMode` collapses (gantry's mode comes from the profile or `--mode`). The `persistUsageStep` is reshaped to construct `SubagentRecord` rows from streamed events (see "Persistence" below). All other steps unchanged. |
-| `teamReview.ts` | Deleted. Gantry's team mode replaces it. |
-| `teamRoles.ts` | Deleted. The reviewer security preamble and role briefs move into `profiles/review/subagent.md`. The deterministic role composition becomes the rule-based prompt in `profiles/review/compose.md`. |
-| `reviewContext.ts` | Reshaped or deleted. The unify-prompt context that today fed into `renderUnifyPrompt` either folds into `profiles/review/unify.md` or becomes a small pre-render step that injects task context into the prompt file. Decided in implementation. |
-| `index.ts`, `state.ts` | Minor updates: `state.repoPath` is now also the gantry `--workdir` and the skills bridging target. |
+| `steps.ts` | `bridgeSkillsStep` → `stageSkillsStep` (mkdtemp staging dir, invariant + user skills, collision rejection; sets `state.skillsStagingDir`). `fetchDigestStep` writes the digest under `<repoPath>/.wrily/` instead of OS tmpdir. `renderPromptStep` additionally renders the unify file in team mode. `agentCallStep` calls `runner.run()` once with `mode: state.reviewMode`, `maxTokens`, `skillsDir`, `extraSkills`, `unifyPromptPath`. `persistUsageStep` maps `AgentResult.events` per Decision 9 (aggregate-row fallback when absent). All other steps unchanged. |
+| `teamReview.ts` | Deleted. Gantry's team mode + G6 budget slices replace it (including the drop-failed-reviewers resilience; gantry fails the run only on team collapse). |
+| `teamRoles.ts` | Deleted. Security preamble → profile `system.md` **and** `subagent.md`. Role briefs/templates → `profiles/review/` content. Deterministic composition is replaced by `compose.md` (model-driven roster). |
+| `reviewContext.ts` | **Retained, reshaped** (not deleted — `buildReviewPromptContext` feeds `renderPromptStep` regardless of gantry). The unify half becomes `buildUnifyFileContext` feeding the per-run `--unify-file` render; `reviewerReports`/`reviewerCount` inputs are dropped. |
+| `state.ts` | Add `skillsStagingDir?: string`. `agentResults` stays (always length 1 post-cutover; events ride `agentResults[0].events`). |
+| `index.ts` | Step id rename only. |
 
 ### `src/skills/`
 
-`loader.ts` — change the bridge target from `join(homedir(), '.claude', 'skills')` to `join(state.repoPath, '.claude', 'skills')`. `names.ts` unchanged.
+`loader.ts` — `bridgeSkills` becomes `stageSkills(sources, stagingDir)`
+with copy-into-fresh-dir semantics (the staging dir is a per-run
+`mkdtemp`, so no overwrite/collision flags are needed at the FS level;
+name-collision policy lives in the step). `names.ts` unchanged.
 
 ### `src/config/`
 
-`providers.ts` — drop the 6 unsupported provider rows; keep `anthropic`, `openai`, `google`. Remove the Bedrock-ambient-AWS branch from `hasAnyProviderAuth`. Update the supporting doc comments.
+| File | Disposition |
+|---|---|
+| `providers.ts` | Drop the 6 unsupported provider rows; keep `anthropic`, `openai`, `google`. Remove the entire Bedrock/AWS ambient-auth branch (`AWS_CREDENTIAL_ENV_VARS`, `hasBedrockAuth`). Update doc comments (pi references go away). |
+| `env.ts` | `MAX_BUDGET` → `MAX_TOKENS` (positive-integer string). New: `WRILY_GANTRY_BIN` (optional path, default `gantry`), `WRILY_ALLOW_UNKNOWN_MODEL` (optional `'1'`). All through the zod schema → `RuntimeEnv`; no ad-hoc `process.env` reads. |
+| `types.ts` / `wrilyYml.ts` | `max_budget_usd` → `max_tokens` (int, defaults per Decision 3). |
 
 ### `src/persist/`
 
-`types.ts` unchanged for this PR (the schema migration is the follow-up). `supabase.ts` unchanged. The shape of records being written is the same.
+| File | Disposition |
+|---|---|
+| `types.ts` | `ReviewRunRecord.max_budget_usd` → `max_tokens: number \| null`. `SubagentRecord` unchanged. |
+| `failure.ts` | Field rename only; `classifyFailure` untouched. |
+| `supabase.ts` | Unchanged. |
+| `supabase/migrations/` | **New narrow migration**: rename `review_runs.max_budget_usd` → `max_tokens`, type bigint. (Full tokens-only migration stays the follow-up.) |
+
+### `src/prompt/`
+
+| File | Disposition |
+|---|---|
+| `templates.ts` | `UNIFY_REVIEW_PROMPT_TEMPLATE` reshaped into the unify-file template: four-action contract + digest instructions + style/sensitivity/delta-clean/confidence; `REVIEWER_REPORTS`/`REVIEWER_COUNT` placeholders removed. `REVIEW_PROMPT_TEMPLATE` unchanged. |
+| `render.ts` | `renderUnifyPrompt` → `renderUnifyFile` (same templating, new context type). |
+| `instructions.ts` | Unchanged (digest path argument now points into the workdir). |
 
 ### `package.json`
 
-Remove `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` from dependencies. No new npm deps added — `GantryRunner` uses only node built-ins (`child_process`, `readline`).
+Remove `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent`.
+No new npm deps — `GantryRunner` uses node built-ins (`child_process`,
+`readline`).
 
 ### `Dockerfile`
 
@@ -195,15 +378,17 @@ RUN set -eux; \
 
 FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
 COPY --from=gantry-fetch /usr/local/bin/gantry /usr/local/bin/gantry
-# … existing wrily layers …
+# … existing wrily layers — MUST include skills/ and profiles/review/ …
 ```
 
 The `GANTRY_VERSION` arg is sourced from `.gantry-version` at build time
-(CI passes `--build-arg GANTRY_VERSION=$(cat .gantry-version)`).
+(CI passes `--build-arg GANTRY_VERSION=$(cat .gantry-version)`). The
+flat-tar member layout is the G1 contract.
 
 ### `.gantry-version`
 
-**New.** One line: the pinned gantry release tag (e.g. `v0.1.0`). A
+**New.** One line: the pinned gantry release tag — **`v0.1.0`** (current
+release; commit `d9e885d`). A
 weekly cron workflow at `.github/workflows/gantry-version-bump.yml`
 calls `gh release view -R <gantry-repo> --json tagName`, compares to
 `.gantry-version`, and opens a PR with the updated tag and a one-line
@@ -211,17 +396,17 @@ release-note summary when drift exists.
 
 ### `profiles/review/`
 
-**New.** Wrily's owned copy. Initial files (with one-line origins):
+**New.** Wrily's owned copy, forked from gantry's `profiles/review/`
+(header comment: "Forked from gantry@\<SHA\>; owned by wrily;
+divergence allowed."). Day-one divergences from the upstream copy:
 
-| File | Origin | Notes |
-|---|---|---|
-| `profile.toml` | gantry `profiles/review/profile.toml` | Header comment: "Forked from gantry@\<SHA\>; owned by wrily; divergence allowed." |
-| `system.md` | gantry equiv | Coordinator persona. |
-| `subagent.md` | gantry equiv + `REVIEWER_SECURITY_PREAMBLE` from `teamRoles.ts` | Security guards live here now, not in TS. |
-| `compose.md` | gantry equiv | Rule-based reviewer roster prompt. |
-| `unify.md` | gantry equiv | Already emits the JSON contract `extractFindings` parses. |
-
-`profile.toml` declares:
+| File | Divergence |
+|---|---|
+| `profile.toml` | `isolate = true`; `shell_allow` gains `grep` and `rg` (pi reviewers had a grep tool + unrestricted bash; reviewers grep constantly). |
+| `system.md` | Coordinator/single-mode persona **+ the security preamble** (from `teamRoles.ts`). |
+| `subagent.md` | Reviewer persona **+ the same security preamble**. |
+| `compose.md` | As upstream (rule-based roster prompt). |
+| `unify.md` | Static fallback only — the live unify prompt is the per-run render passed via `--unify-file` (Decision 14). Kept aligned with the template so a missing override still produces parseable output. |
 
 ```toml
 mode = "team"
@@ -231,228 +416,279 @@ compose = "compose.md"
 unify = "unify.md"
 tools = ["read_file", "list_files", "find_files", "git_diff", "ast_grep", "shell", "skill_load"]
 inject_skills = ["agent-team-review", "code-review", "confidence-rating", "caveman-review"]
-shell_allow = ["git", "cat", "ls", "find"]
+shell_allow = ["git", "cat", "ls", "find", "grep", "rg"]
+isolate = true
 ```
-
-`.wrily.yml`-supplied user skills are appended as `--inject-skill <name>` flags at spawn time, augmenting the profile's invariant set.
 
 ## GantryRunner
 
 ```ts
 // src/agent/gantry.ts (signature sketch)
 export class GantryRunner implements AgentRunner {
-  constructor(private readonly opts: GantryRunnerDeps);
+  constructor(private readonly deps: {
+    binary: string;            // env.wrilyGantryBin ?? 'gantry'
+    profileDir: string;        // wrily-owned profiles/review/
+    hooks?: GantryHooks;       // static observability hooks
+  });
+
   async run(req: AgentRunOptions): Promise<AgentResult> {
-    // 1. write req.prompt to a tmp file inside req.workingDir/.wrily/
-    // 2. resolve --model from req.model (already canonical per modelResolver)
-    // 3. spawn gantry with flags assembled from req + injected skill list
-    // 4. parse stdout line-by-line as NDJSON
-    //    - on `assistant_text`: append to per-role text buffer
-    //    - on `subagent_spawn`: open in-memory SubagentRecord
-    //    - on `subagent_done`: close it, fire onSubagentDone hook
-    //    - on `subagent_failed`: close with status, fire hook
-    //    - on `agent_turn` (role=coordinator): accumulate into synthetic coordinator record
-    //    - on `result`: finalize AgentResult
-    // 5. map result.exit → success | AgentBudgetExceededError | AgentTimeoutError | Error
-    // 6. on SIGTERM to wrily: forward to gantry child
+    // 1. resolveModel(req.model, manifest) — aliases never reach the child
+    // 2. write req.prompt to mkdtemp (OUTSIDE workdir) → --prompt-file
+    // 3. assemble argv: --profile --mode --model --workdir --max-tokens
+    //    --timeout-ms [--unify-file] [--skills-dir] [--inject-skill …]
+    // 4. spawn; start watchdog at timeoutMs + 30s grace
+    //    (trip → SIGTERM, 5s, SIGKILL → throw AgentTimeoutError)
+    // 5. parse stdout line-by-line as NDJSON (readline)
+    //    NB: assert start.schema_version === "1.1"; warn on mismatch
+    //    - assistant_text: append to per-role buffer (capped, 1 MiB)
+    //    - all events: push to event list, fire hooks.onEvent
+    //    - result: finalize
+    //    stderr: captured, capped at 256 KiB
+    // 6. map result.exit via the full table: 0 ok | 1 error | 2 budget
+    //    | 3 timeout | 4 config | 5 rate_limited. exit 5 is RECOVERABLE:
+    //    bounded backoff-retry honoring error.retry_after_ms, capped by
+    //    remaining timeout; on exhaustion → AgentRateLimitedError
+    // 7. stdout EOF without result event → synthesize via the SAME full
+    //    table from the child exit code (incl. 4→config, 5→rate_limited)
+    // 8. SIGTERM to wrily → forward to child (cooperates with main.ts's
+    //    existing handleTermination; gantry exits `timeout` on SIGTERM)
   }
 }
-```
 
-The injected hooks are:
-
-```ts
 interface GantryHooks {
-  onSubagentDone?(record: SubagentRecord): void; // future-extensible
-  onEvent?(event: GantryEvent): void;            // for logs / observability
+  onEvent?(event: AgentEvent): void; // logs / observability; sync, fire-and-forget in v1
 }
 ```
 
-The hooks are fire-and-forget (sync) for v1. The streaming-flush
-follow-up PR will make them async and wire Supabase writes through
-them.
+The streaming-flush follow-up PR makes hooks async and wires Supabase
+writes through them; v1 persistence consumes the buffered
+`AgentResult.events` after the run.
 
 ## Failure mode mapping
 
 | `result.exit` | Code | Wrily outcome |
 |---|---|---|
-| `ok` | 0 | Return `AgentResult { stdout: <unify JSON>, tokenUsage, model, durationMs, exitCode: 0 }`. |
-| `budget` | 2 | `throw new AgentBudgetExceededError(stdout, stderr)` where `stdout` = concatenated `assistant_text`, `stderr` = captured gantry stderr. |
-| `timeout` | 3 | `throw new AgentTimeoutError(timeoutMs, stdout, stderr)`. Wrily's existing failure-comment path posts the timeout-specific message. |
-| `error` | 1 | `throw new Error("gantry: <message>")` — generic. Carries gantry's terminal `error` event message if one was emitted. |
-| `config` | 4 | `throw new Error("gantry config: <message>")` — should never happen at runtime if wrily's argv assembly is correct; treat as a wrily bug. |
+| `ok` | 0 | Return `AgentResult { stdout: <final coordinator/single text>, tokenUsage (from result totals + models.ts cost), model, durationMs, exitCode: 0, events }`. |
+| `budget` | 2 | `throw new AgentBudgetExceededError(stdout, stderr)` — `stdout` = concatenated buffered `assistant_text`, `stderr` = captured gantry stderr. |
+| `timeout` | 3 | `throw new AgentTimeoutError(timeoutMs, stdout, stderr)`. |
+| `error` | 1 | `throw new Error("gantry: <message>")` — carries the terminal `error` event message (incl. `team_collapse`). |
+| `config` | 4 | `throw new Error("gantry config: <message>")` — wrily argv-assembly bug; should never happen at runtime. |
+| `rate_limited` | 5 | **Recoverable.** Bounded backoff-retry honoring `error.retry_after_ms` (capped by remaining timeout); on exhaustion `throw new AgentRateLimitedError(retryAfterMs, stdout, stderr)`. |
+| *(no result event)* | — | Synthesized from the process exit code via the full table above (incl. 4/5) per GantryRunner step 7. |
+| *(no exit at all)* | — | Watchdog per GantryRunner step 4 → `AgentTimeoutError`. |
 
-A malformed NDJSON line (rare but possible — e.g. gantry crashes
-mid-write) is treated as `error`: log the broken line at warn, throw a
-generic `Error` after the subprocess exits. `dependabot-review`'s
-"detect early, fail loudly" posture.
+A malformed NDJSON line is logged at warn and skipped; if the stream
+then ends without a `result` event, the EOF synthesis path applies.
+"Detect early, fail loudly."
 
 ## Persistence mapping
 
-For one team review run, the events arrive in this order (per gantry's documented vocabulary):
+Event order for one team run (per gantry's documented vocabulary + G5/G8):
 
 ```
 start
-  agent_turn (role=coordinator, turn=0)          ← compose pass
-  subagent_spawn  (name=correctness, scope=full)
-  subagent_spawn  (name=spec-compliance, scope=full)
-  subagent_spawn  (name=<dir>-conventions, scope=<dir>)
+  agent_turn (role=coordinator, duration_ms, tokens…)      ← compose
+  subagent_spawn (name=correctness, scope=…)
   …
-  agent_turn (role=correctness, turn=…)
-  tool_call / tool_result …
-  agent_turn (role=spec-compliance, turn=…)
+  agent_turn (role=correctness, …) / tool_call / tool_result …
+  subagent_done (name=correctness, turns, input_tokens,
+                 output_tokens, cache_read, cache_write, duration_ms)
+  subagent_failed (name=…, reason)                          ← dropped lane
   …
-  subagent_done   (name=correctness, totals…)
-  subagent_done   (name=spec-compliance, totals…)
-  …
-  agent_turn (role=coordinator, turn=…)          ← unify pass
-result (exit, totals…)
+  agent_turn (role=coordinator, duration_ms, tokens…)       ← unify
+result (exit, total_input, total_output, total_cache_read,
+        total_cache_write, duration_ms)
 ```
 
-Wrily's in-memory model during the run:
+At `persistUsageStep` (batched-flush model), from `agentResults[0].events`:
 
-```ts
-interface RunState {
-  start: { model, workdir, ts };
-  subagents: Map<string /* name */, SubagentDraft>;
-  coordinator: { input_tokens, output_tokens, cache_read_tokens, cache_write_tokens };
-  finalText: string;            // last assistant_text from role=coordinator
-  finalResult?: ResultEvent;
-}
-```
+- One `ReviewRunRecord` from `result` totals (`duration_ms` from the
+  event; `max_tokens` from cfg; cost from `models.ts` rates × totals).
+- N `SubagentRecord` rows, one per `subagent_done`, with
+  `role = name`, tokens/cache/duration straight off the event (G5),
+  `model` = the run's canonical slug (gantry runs one model per run).
+- One synthetic `SubagentRecord` with `role = 'coordinator'`:
+  **tokens = `result` totals − Σ subagent rows (per field, floored at
+  0)**; `duration_ms` = Σ coordinator-role `agent_turn.duration_ms`.
+  Closure invariant: run record totals === Σ all subagent rows, by
+  construction.
+- `subagent_failed` lanes produce no row in v1 (no totals are emitted
+  for them); the unify output reports them as gaps.
 
-At workflow `persistUsageStep` time (existing batched-flush model):
+`subagent_failed.reason` is pinned to `"budget"` (slice exceeded) or
+`"panic"`, else free-form provider text — match those literals if the
+streaming-flush follow-up ever surfaces dropped lanes.
 
-- One `ReviewRunRecord` written from `result` totals.
-- N `SubagentRecord` rows, one per `subagent_done` event, with
-  `role = subagent_spawn.name` (e.g. `correctness`, `<dir>-conventions`).
-- One synthetic `SubagentRecord` with `role = 'coordinator'`,
-  duration_ms = sum of coordinator-role `agent_turn` durations, tokens
-  from the accumulated `coordinator` block.
+When `events` is absent (fake runners): one row per `AgentResult`,
+`role` = `'single'` or `'coordinator'` by review mode — the existing
+workflow tests keep asserting against real behavior.
 
-Cost per row computed from `models.ts` rates × token counts.
+Cost per row = `models.ts` rates × token counts (0 + warn for
+unknown-model runs).
 
 ## Runtime control flow inside the agent step
 
 ```ts
+// main.ts (composition root)
+const agentRunner = new GantryRunner({
+  binary: env.wrilyGantryBin ?? 'gantry',
+  profileDir: resolveProfileDir(),       // wrily-owned profiles/review/
+});
+const workflow = buildReviewWorkflow({ agentRunner, octokit, graphqlClient });
+```
+
+```ts
 // inside steps.ts agentCallStep (sketch)
-const runner: AgentRunner = new GantryRunner({
-  binary: process.env.WRILY_GANTRY_BIN ?? 'gantry',
-  profileDir: resolveProfileDir(),         // wrily-owned profiles/review/
-  injectExtraSkills: state.loadedSkills,   // appended as --inject-skill flags
-});
-
-const result = await runner.run({
+const result = await deps.agentRunner.run({
   prompt: state.renderedPrompt!,
-  model: state.cfg.model,                  // already canonical via modelResolver
+  model: state.cfg.model,                 // resolved inside the runner
+  mode: state.reviewMode ?? 'single',
   workingDir: state.repoPath!,
-  maxBudgetUsd: state.cfg.max_budget_usd,
-  env: process.env,
+  maxTokens: state.cfg.max_tokens ?? defaultMaxTokens(state.reviewMode),
   timeoutMs: DEFAULT_TIMEOUT_MS,
+  skillsDir: state.skillsStagingDir,
+  extraSkills: state.loadedSkills,        // user skills only
+  unifyPromptPath: state.unifyPromptPath, // team mode only
+  env: process.env,
 });
 
-state.agentResults = [result];             // singleton; the team is inside gantry
-state.eventLog = runner.events;            // captured for persist + debug
+state.agentResults = [result];            // singleton; the team is inside gantry
 return state;
 ```
 
-The `agentResults` array stays for backward compat with downstream
-steps that iterate it; in the gantry world it's always length 1 (the
-team's unify output). The per-subagent telemetry lives on
-`state.eventLog`, which `persistUsageStep` consumes.
+`agentResults` stays an array for downstream compatibility; post-cutover
+it is always length 1, and per-subagent telemetry lives on
+`result.events`.
 
 ## Build & distribution
 
 | Concern | Approach |
 |---|---|
-| Binary architecture | x86_64-unknown-linux-gnu + aarch64-unknown-linux-gnu, glibc. Selected via Docker `TARGETARCH`. |
-| Checksum verification | `SHA256SUMS` file pulled alongside the tarball; verified in the Docker build before extraction. |
-| Provenance | If gantry releases include sigstore signatures / SLSA provenance, wrily's `dependabot-review` invariants prefer them but don't require them for v1. |
-| Image bloat | The fetch stage is discarded; final image gains only the gantry binary (~15-30 MB). |
-| Local dev | A `WRILY_GANTRY_BIN` env var lets developers point at a locally-built `gantry` (e.g. `target/release/gantry` from a sibling checkout). |
-| Self-hosting | `docs/self-hosting.md` updated: no longer requires Node-side `@earendil-works/*` install — the gantry binary ships in the image. |
+| Binary architecture | x86_64 + aarch64 `-unknown-linux-gnu`, glibc. Selected via Docker `TARGETARCH`. |
+| Artifact contract | G1: asset naming + flat single-member tar + `SHA256SUMS`, verified in the Docker build before extraction. |
+| Provenance | If gantry releases add sigstore/SLSA provenance, prefer but don't require for v1. |
+| Image bloat | Fetch stage discarded; final image gains only the gantry binary (~15-30 MB). |
+| Local dev | `WRILY_GANTRY_BIN` (via `env.ts`) points at a locally-built `gantry` (e.g. sibling checkout `target/release/gantry`). |
+| Self-hosting | `docs/self-hosting.md` updated: no Node-side `@earendil-works/*` install; binary ships in the image. |
 
 ## Test strategy
 
-The `AgentRunner` interface + `FakeAgentRunner` + `SequenceFakeAgentRunner`
-seam stays. All existing workflow tests that inject a fake continue to
-work as-is.
+The `AgentRunner` + fake seam stays; all existing workflow tests that
+inject fakes continue to work (modulo the `AgentRunOptions` field
+renames).
 
-New tests for the runner itself:
+New tests for the runner:
 
-- `tests/fixtures/gantry/success.ndjson` — full happy-path team run, ends with `result.exit = ok`.
-- `tests/fixtures/gantry/budget-exceeded.ndjson` — terminates with `budget_exceeded` followed by `result.exit = budget`.
-- `tests/fixtures/gantry/timeout.ndjson` — terminates with `result.exit = timeout`.
-- `tests/fixtures/gantry/subagent-failed.ndjson` — at least one `subagent_failed` event, run still completes.
-- `tests/fixtures/gantry/malformed.ndjson` — truncated/garbage NDJSON line mid-stream.
-- `tests/fixtures/gantry/gantry-stub.sh` — tiny shell script: `cat $1; exit $2`. Used by spawn tests.
-- `tests/agent/gantry.test.ts` — feeds each fixture through the runner's NDJSON parser directly (no subprocess) AND through the stub-binary spawn path; asserts:
-  - Final `AgentResult` shape (stdout, tokenUsage, model, exitCode)
-  - Correct error type thrown for each non-ok exit
-  - Per-event hooks fire in expected order
-  - `SubagentRecord` rows reconstruct correctly, including the synthetic coordinator row
-  - SIGTERM forwarding works (skipped on Windows runners)
+- `tests/fixtures/gantry/*.ndjson` — **generated from real gantry runs**
+  (committed verbatim, not hand-written), covering: happy-path team run,
+  `budget` exit, `timeout` exit, `rate_limited` (exit 5) carrying a
+  `retry_after_ms` hint, `subagent_failed` mid-run with completed run,
+  malformed line mid-stream, stream EOF without `result`.
+- `tests/fixtures/gantry/gantry-stub.sh` — `cat $1; exit $2` for spawn
+  tests; a `sleep`-then-exit variant for the watchdog test.
+- `tests/agent/gantry.test.ts` — each fixture through the parser
+  directly AND through the stub-binary spawn path; asserts:
+  - `AgentResult` shape incl. `events`
+  - correct error class per non-ok exit (incl. `AgentRateLimitedError`
+    for exit 5 after retry exhaustion), **and per EOF-synthesis path**
+  - watchdog kills a hung child and throws `AgentTimeoutError`
+  - argv assembly: `--mode` passthrough (single + team), `--skills-dir`,
+    `--inject-skill` ordering, `--unify-file` presence only in team mode
+  - alias resolution happens before spawn (fake binary records argv)
+  - SIGTERM forwarding (skipped on Windows runners)
+- `tests/workflow/persist-events.test.ts` — `SubagentRecord`
+  reconstruction from a real-run fixture, including the
+  coordinator-by-subtraction closure invariant (Σ rows === run totals)
+  and the no-events fallback.
+- **Unify-contract pin test**: the committed real-run unify output fed
+  through `extractFindings` must parse — including at least one fixture
+  exercising `reply_in_thread` / `suppress` / `resolve_thread` actions
+  (digest-seeded run). This is the guard against the profile fork
+  drifting from `extract.ts`'s schema.
+- Skills staging test: invariant set staged from install tree; user
+  skill colliding with an invariant name is rejected; staging dir is
+  fresh per run.
 
-`tests/agent/pi.test.ts` is deleted alongside `pi.ts`.
+Deleted alongside their subjects: `tests/agent/pi.test.ts`,
+`tests/agent/pi-factory.test.ts`, `tests/agent/factory.test.ts`,
+`tests/workflow/teamRoles.test.ts`,
+`tests/workflow/team-orchestration.test.ts`.
+`team-threshold-folders.test.ts` and `single-mode.test.ts` stay (the
+threshold + mode logic survives).
 
 ## Migration plan
 
-**Single PR**: this entire spec lands in one commit-graph. Validated by
-wrily reviewing its own gantry-cutover PR (the bot will spawn gantry
-against itself).
+**Phase 0 — gantry pre-flight (gantry repo) — ✅ DONE (v0.1.0):**
 
-**Pre-flight (gantry side, not part of this PR)**:
+1. ✅ G2–G8 contract changes merged to gantry `main` (`d9e885d`),
+   PRs #21–#24.
+2. ✅ G1 release pipeline landed (PR #25); `v0.1.0` tagged with both
+   linux-gnu tarballs + `SHA256SUMS`, flat-member layout verified.
 
-1. Gantry ships a release workflow producing `x86_64-` and
-   `aarch64-unknown-linux-gnu.tar.gz` artifacts + `SHA256SUMS`.
-2. Gantry cuts the first tagged release (e.g. `v0.1.0`).
+**Phase 1 — the wrily PR:**
 
-**The PR itself**:
-
-1. Add `profiles/review/` (initial fork from gantry's profile).
-2. Add `src/agent/gantry.ts`, `src/agent/models.ts`.
-3. Rewrite `modelResolver.ts`'s `ModelLookup` impl over `models.ts`.
-4. Rewrite `src/workflow/steps.ts`'s `agentCallStep` + `persistUsageStep`.
-5. Update `src/skills/loader.ts` target path.
+1. Add `profiles/review/` (fork + day-one divergences per table).
+2. Add `src/agent/gantry.ts`, `src/agent/models.ts`; extend `runner.ts`.
+3. Re-back `modelResolver.ts` with the manifest.
+4. Rework `steps.ts`: `stageSkillsStep`, digest-into-workdir,
+   unify-file render, `agentCallStep`, `persistUsageStep`.
+5. Reshape `reviewContext.ts` (keep `buildReviewPromptContext`; unify
+   half → unify-file context); reshape `templates.ts`/`render.ts`.
 6. Delete `src/agent/pi.ts`, `src/agent/factory.ts`,
-   `src/workflow/teamReview.ts`, `src/workflow/teamRoles.ts`,
-   `src/workflow/reviewContext.ts`, `tests/agent/pi.test.ts`.
-7. Drop the 6 providers from `src/config/providers.ts` + comment updates.
-8. Drop `@earendil-works/pi-ai` + `@earendil-works/pi-coding-agent` from `package.json`; regenerate lockfile.
-9. Add `.gantry-version` + `.github/workflows/gantry-version-bump.yml`.
-10. Update `Dockerfile` for the multi-stage gantry fetch.
-11. Update `docs/adoption.md`, `docs/self-hosting.md`, `README.md`, `.wrily.yml.example` to drop removed-provider references.
-12. Add `tests/fixtures/gantry/` + `tests/agent/gantry.test.ts`.
-13. Self-review: open the PR; wrily-bot reviews itself; iterate.
+   `src/workflow/teamReview.ts`, `src/workflow/teamRoles.ts`, and the
+   tests listed above.
+7. Config: `max_tokens` (types, wrilyYml, env.ts incl. `MAX_TOKENS`,
+   `WRILY_GANTRY_BIN`, `WRILY_ALLOW_UNKNOWN_MODEL`); providers.ts
+   narrowed, AWS branch removed.
+8. Persistence: `max_tokens` field rename + narrow supabase migration.
+9. Drop `@earendil-works/*` deps; regenerate lockfile.
+10. `.gantry-version` + `gantry-version-bump.yml` cron.
+11. Dockerfile gantry-fetch stage (+ ensure `skills/` and
+    `profiles/review/` are in the image).
+12. Docs: `docs/adoption.md`, `docs/self-hosting.md`, `README.md`,
+    `.wrily.yml.example` — provider narrowing + `max_tokens`.
+13. Fixtures + tests per "Test strategy" (fixtures generated against a
+    locally-built gantry at the pinned tag).
 
-**Rollback**: revert the merge commit. The pre-cutover state still
-works (PR #32's pi integration is the baseline being replaced).
+**Validation (pre-merge, explicit):** the deployed bot still runs the
+old pi build, so "the bot reviews the PR" validates nothing about
+gantry. Instead: run the **branch's** wrily via `local_cli`
+(`./wrily`) against the cutover PR, with `WRILY_GANTRY_BIN` pointing at
+the pinned-tag gantry binary — once in team mode, once with
+`MODE=single`, once against a PR with prior wrily threads (exercises
+the digest → `reply_in_thread`/`resolve_thread` path). Post-merge, the
+deployed bot reviewing subsequent PRs is the ongoing confirmation.
+
+**Rollback:** revert the merge commit plus the narrow supabase
+migration (paired down-migration committed alongside). The pre-cutover
+state (PR #32's pi integration) is the baseline being replaced.
 
 ## Non-goals
 
 - Re-adding the 6 dropped providers as gantry adapters. Tracked
   separately as gantry contributions.
-- Tokens-only persistence schema migration. Follow-up wrily PR
-  (paired with the streaming-flush rework).
+- USD-denominated budget config. Could return later as a wrily-level,
+  rate-informed conversion on top of `max_tokens`; not in this PR.
+- Tokens-only persistence schema migration beyond the narrow
+  `max_tokens` column rename. Follow-up wrily PR (paired with the
+  streaming-flush rework).
 - Streaming per-event Supabase flush. Follow-up wrily PR.
-- Supporting gantry deployed separately from wrily's image (no
-  out-of-image gantry binary as a first-class deployment mode).
-- Backward-compat shim for `@earendil-works/*` consumers — wrily was
-  the only consumer; full removal is clean.
-- Changing wrily's `.wrily.yml` schema. The `model` and `skills` fields
-  keep their current semantics; the model alias set narrows naturally
-  because the provider matrix did.
+- Per-subagent model selection (gantry runs one model per run; revisit
+  upstream if ever needed).
+- Supporting gantry deployed separately from wrily's image.
+- Backward-compat shims of any kind — neither project is in active
+  use; every rename is a clean cutover.
 
 ## Operational follow-ups
 
 These land after PR1 merges, in order:
 
-1. Self-hosting docs revision: update `docs/self-hosting.md` to reflect
-   the new image content (no Node-side agent deps) and the
-   `WRILY_GANTRY_BIN` override for local development.
+1. Self-hosting docs revision: new image content, `WRILY_GANTRY_BIN`
+   local-dev override.
 2. Tokens-only persistence migration (Section 7 option C from the
-   brainstorm): drop `cost_usd` from the write path; teach `wrily costs`
-   to compute USD at query time from `src/agent/models.ts` rates.
+   brainstorm): drop `cost_usd` from the write path; teach `wrily
+   costs` to compute USD at query time from `src/agent/models.ts`
+   rates. (The `max_tokens` column rename already landed in PR1.)
 3. Streaming-flush persistence (Section 8 option C from the
    brainstorm): make `GantryHooks` async and route `subagent_done`
    writes through them.
