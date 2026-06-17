@@ -113,3 +113,28 @@ export function modelByAlias(alias: string): ModelManifestEntry | undefined {
 export function ratesForSlug(slug: string): ModelRates | undefined {
   return BY_SLUG[slug]?.rates;
 }
+
+/** A token vector to be costed. Counts are raw token totals, not per-MTok. */
+export interface TokenVector {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+}
+
+/**
+ * USD cost for a token vector at the given per-MTok rates. Returns 0 when
+ * `rates` is absent (e.g. an unknown model admitted via
+ * `WRILY_ALLOW_UNKNOWN_MODEL` has no manifest rates). Single source of truth
+ * for the `tokens × rate / 1e6` formula — reused by the gantry runner and the
+ * persistence (usage reconciliation) path.
+ */
+export function costForTokens(rates: ModelRates | undefined, vec: TokenVector): number {
+  if (!rates) return 0;
+  return (
+    vec.input * rates.input +
+    vec.output * rates.output +
+    vec.cacheRead * rates.cacheRead +
+    vec.cacheWrite * rates.cacheWrite
+  ) / 1_000_000;
+}

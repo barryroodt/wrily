@@ -13,7 +13,7 @@ import type {
   ResultEvent,
 } from './runner.js';
 import { resolveModel } from './modelResolver.js';
-import { ratesForSlug, type ModelRates } from './models.js';
+import { costForTokens, ratesForSlug } from './models.js';
 import {
   AgentBudgetExceededError,
   AgentTimeoutError,
@@ -24,10 +24,13 @@ import {
  * Per-`run()` timeout. Kept BELOW the CI job ceiling (workflows set
  * `timeout-minutes: 30`) so a hung session aborts and raises
  * AgentTimeoutError — letting the workflow post a timeout failure comment —
- * before GitHub hard-kills the container. Team mode runs two sequential phases
- * (reviewers in parallel, then unify), each capped at this value, so 12m keeps
- * the worst case (~24m + overhead) under the 30m job ceiling. Override via the
- * `WRILY_AGENT_TIMEOUT_MS` env var, or per call via `AgentRunOptions.timeoutMs`.
+ * before GitHub hard-kills the container. Post-cutover a team review is ONE
+ * gantry subprocess (reviewers + unify in a single run under a single
+ * `--timeout-ms`), so the worst case is ~12m — not two sequential ~24m phases.
+ * `run()` keeps this deadline authoritative across rate-limit retries (each
+ * retry's `--timeout-ms` is the REMAINING budget, never a fresh `timeoutMs`).
+ * Override via the `WRILY_AGENT_TIMEOUT_MS` env var, or per call via
+ * `AgentRunOptions.timeoutMs`.
  */
 export const DEFAULT_TIMEOUT_MS = (() => {
   const fromEnv = Number.parseInt(process.env.WRILY_AGENT_TIMEOUT_MS ?? '', 10);
@@ -70,6 +73,12 @@ export interface GantryRunnerDeps {
   binary: string;
   /** Wrily-owned `profiles/review/` directory, forwarded to `--profile`. */
   profileDir: string;
+  /**
+   * Unknown-model escape hatch, mirrored from `RuntimeEnv.allowUnknownModel`
+   * (`WRILY_ALLOW_UNKNOWN_MODEL=1`). Threaded here at the composition root so
+   * `resolveModel` never reaches into `process.env` itself. Defaults to `false`.
+   */
+  allowUnknownModel?: boolean;
   hooks?: GantryHooks;
 }
 
@@ -77,16 +86,6 @@ function delay(ms: number): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
   setTimeout(resolve, ms);
   return promise;
-}
-
-/** Compute USD cost from run totals and per-MTok rates (rates are per 1,000,000 tokens). */
-function costFromRates(result: ResultEvent, rates: ModelRates): number {
-  return (
-    (result.total_input / 1_000_000) * rates.input +
-    (result.total_output / 1_000_000) * rates.output +
-    (result.total_cache_read / 1_000_000) * rates.cacheRead +
-    (result.total_cache_write / 1_000_000) * rates.cacheWrite
-  );
 }
 
 function truncateForLog(line: string): string {
@@ -145,7 +144,9 @@ export class GantryRunner implements AgentRunner {
 
   async run(req: AgentRunOptions): Promise<AgentResult> {
     // 1. Resolve the model FIRST — raw aliases (`opus`) never reach the child.
-    const model = resolveModel(req.model);
+    const model = resolveModel(req.model, undefined, {
+      allowUnknown: this.deps.allowUnknownModel ?? false,
+    });
     const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     // 2. Write the prompt to a staging dir OUTSIDE the (hostile) workdir.
@@ -156,11 +157,18 @@ export class GantryRunner implements AgentRunner {
     try {
       // exit 5 (`rate_limited`) is recoverable: bounded backoff-retry of the
       // whole run, honoring the error event's `retry_after_ms` and capping the
-      // total added wait by the remaining timeout budget.
+      // total added wait by the remaining timeout budget. The `deadline` is
+      // authoritative: each attempt's cap is the REMAINING budget, never a fresh
+      // `timeoutMs`, so N retries can't stack into N×timeoutMs of wall time.
       const deadline = Date.now() + timeoutMs;
       for (let attempt = 1; ; attempt++) {
+        const perAttempt = Math.min(timeoutMs, deadline - Date.now());
+        // Deadline already spent (a prior attempt + backoff consumed it): bail
+        // as a timeout rather than spawn a child with a non-positive cap.
+        if (perAttempt <= 0) throw new AgentTimeoutError(timeoutMs, '', '');
         try {
-          return await this.spawnAndParse(req, model, promptFile, timeoutMs);
+          // perAttempt feeds BOTH gantry's `--timeout-ms` and the watchdog.
+          return await this.spawnAndParse(req, model, promptFile, perAttempt);
         } catch (err) {
           if (!(err instanceof AgentRateLimitedError)) throw err;
           if (attempt >= MAX_RATE_LIMIT_ATTEMPTS) throw err;
@@ -293,7 +301,12 @@ export class GantryRunner implements AgentRunner {
         outputTokens: result.total_output,
         cacheReadTokens: result.total_cache_read,
         cacheWriteTokens: result.total_cache_write,
-        costUsd: rates ? costFromRates(result, rates) : 0,
+        costUsd: costForTokens(rates, {
+          input: result.total_input,
+          output: result.total_output,
+          cacheRead: result.total_cache_read,
+          cacheWrite: result.total_cache_write,
+        }),
       };
       return {
         stdout: finalAssistantText(),

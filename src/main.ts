@@ -108,6 +108,7 @@ async function main(): Promise<void> {
   const agentRunner = new GantryRunner({
     binary: env.wrilyGantryBin ?? 'gantry',
     profileDir: resolveProfileDir(),
+    allowUnknownModel: env.allowUnknownModel,
   });
 
   const workflow = buildReviewWorkflow({ agentRunner, octokit, graphqlClient });

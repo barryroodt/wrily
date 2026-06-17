@@ -22,10 +22,10 @@ import { renderReviewBody } from '../post/body.js';
 import type { AgentRunner, AgentResult } from '../agent/runner.js';
 import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
-import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
 import { buildReviewPromptContext, buildUnifyFileContext } from './reviewContext.js';
-import { ratesForSlug, type ModelRates } from '../agent/models.js';
+import { ratesForSlug } from '../agent/models.js';
+import { buildUsageRecords, type UsageRunBase } from '../persist/usage.js';
 // DEFAULT_TIMEOUT_MS relocates from pi.ts to gantry.ts per the spec (Decision in
 // "Component-level changes / src/agent"). gantry.ts is a sibling cutover todo;
 // this import resolves once it lands. [cross-todo dep — see commit note]
@@ -66,23 +66,6 @@ function wrilyInstallSkillsDir(): string {
   return override && override.length > 0
     ? override
     : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills');
-}
-
-/** USD cost for a token vector at the given per-MTok rates (0 when unknown). */
-function costUsd(
-  rates: ModelRates | undefined,
-  input: number,
-  output: number,
-  cacheRead: number,
-  cacheWrite: number,
-): number {
-  if (!rates) return 0;
-  return (
-    input * rates.input +
-    output * rates.output +
-    cacheRead * rates.cacheRead +
-    cacheWrite * rates.cacheWrite
-  ) / 1_000_000;
 }
 
 function escapeRegExp(s: string): string {
@@ -685,8 +668,9 @@ export function makeSteps(deps: WorkflowDeps) {
         const rates = ratesForSlug(runSlug);
         const reviewMode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
 
-        // Fields shared by both mapping paths.
-        const base = {
+        // Run-record fields fixed before reconciliation (everything except the
+        // model slug and the token/duration/cost totals buildUsageRecords fills).
+        const base: UsageRunBase = {
           github_repo: state.env.githubRepository,
           pr_number: state.env.prNumber,
           commit_sha: state.env.commitSha,
@@ -697,124 +681,17 @@ export function makeSteps(deps: WorkflowDeps) {
           max_tokens: state.cfg.max_tokens ?? null,
           status,
           findings_posted: status === 'success' ? (state.findings ? state.findings.length : 0) : null,
-        } as const;
+        };
 
-        let run: ReviewRunRecord;
-        let subagents: SubagentRecord[];
-
-        if (events && events.length > 0) {
-          // Decision 9: one SubagentRecord per subagent_done, plus a synthetic
-          // coordinator row computed by subtraction so the per-row sums reconcile
-          // exactly with the run record (closure invariant).
-          let totalInput = 0;
-          let totalOutput = 0;
-          let totalCacheRead = 0;
-          let totalCacheWrite = 0;
-          let runDuration = result?.durationMs ?? 0;
-          let sumInput = 0;
-          let sumOutput = 0;
-          let sumCacheRead = 0;
-          let sumCacheWrite = 0;
-          let coordinatorDuration = 0;
-          const rows: SubagentRecord[] = [];
-
-          for (const e of events) {
-            switch (e.event) {
-              case 'result':
-                totalInput = e.total_input;
-                totalOutput = e.total_output;
-                totalCacheRead = e.total_cache_read;
-                totalCacheWrite = e.total_cache_write;
-                runDuration = e.duration_ms;
-                break;
-              case 'subagent_done':
-                sumInput += e.input_tokens;
-                sumOutput += e.output_tokens;
-                sumCacheRead += e.cache_read;
-                sumCacheWrite += e.cache_write;
-                rows.push({
-                  role: e.name,
-                  model: runSlug,
-                  duration_ms: e.duration_ms,
-                  input_tokens: e.input_tokens,
-                  output_tokens: e.output_tokens,
-                  cache_read_tokens: e.cache_read,
-                  cache_write_tokens: e.cache_write,
-                  cost_usd: costUsd(rates, e.input_tokens, e.output_tokens, e.cache_read, e.cache_write),
-                });
-                break;
-              case 'agent_turn':
-                if (e.role === 'coordinator') coordinatorDuration += e.duration_ms;
-                break;
-              default:
-                break;
-            }
-          }
-
-          const coordInput = Math.max(0, totalInput - sumInput);
-          const coordOutput = Math.max(0, totalOutput - sumOutput);
-          const coordCacheRead = Math.max(0, totalCacheRead - sumCacheRead);
-          const coordCacheWrite = Math.max(0, totalCacheWrite - sumCacheWrite);
-          rows.push({
-            role: 'coordinator',
-            model: runSlug,
-            duration_ms: coordinatorDuration,
-            input_tokens: coordInput,
-            output_tokens: coordOutput,
-            cache_read_tokens: coordCacheRead,
-            cache_write_tokens: coordCacheWrite,
-            cost_usd: costUsd(rates, coordInput, coordOutput, coordCacheRead, coordCacheWrite),
-          });
-
-          subagents = rows;
-          run = {
-            ...base,
-            model: runSlug,
-            duration_ms: runDuration,
-            input_tokens: totalInput,
-            output_tokens: totalOutput,
-            cache_read_tokens: totalCacheRead,
-            cache_write_tokens: totalCacheWrite,
-            cost_usd: costUsd(rates, totalInput, totalOutput, totalCacheRead, totalCacheWrite),
-          };
-        } else {
-          // No events (fake runners): one aggregate row per result, role by mode,
-          // costs straight off the result's tokenUsage. Keeps workflow tests real.
-          const totals = agentResults.reduce(
-            (acc, r) => {
-              const u = r.tokenUsage;
-              if (!u) return acc;
-              acc.input += u.inputTokens;
-              acc.output += u.outputTokens;
-              acc.cacheRead += u.cacheReadTokens ?? 0;
-              acc.cacheWrite += u.cacheWriteTokens ?? 0;
-              acc.cost += u.costUsd ?? 0;
-              return acc;
-            },
-            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
-          );
-          const totalDuration = agentResults.reduce((sum, r) => sum + r.durationMs, 0);
-          subagents = agentResults.map((r) => ({
-            role: reviewMode === 'team' ? 'coordinator' : 'single',
-            model: r.model ?? state.cfg.model,
-            duration_ms: r.durationMs,
-            input_tokens: r.tokenUsage?.inputTokens ?? 0,
-            output_tokens: r.tokenUsage?.outputTokens ?? 0,
-            cache_read_tokens: r.tokenUsage?.cacheReadTokens ?? 0,
-            cache_write_tokens: r.tokenUsage?.cacheWriteTokens ?? 0,
-            cost_usd: r.tokenUsage?.costUsd ?? 0,
-          }));
-          run = {
-            ...base,
-            model: agentResults[0]?.model ?? state.cfg.model,
-            duration_ms: totalDuration,
-            input_tokens: totals.input,
-            output_tokens: totals.output,
-            cache_read_tokens: totals.cacheRead,
-            cache_write_tokens: totals.cacheWrite,
-            cost_usd: totals.cost,
-          };
-        }
+        const { run, subagents } = buildUsageRecords(events, {
+          runSlug,
+          rates,
+          base,
+          reviewMode,
+          resultDurationMs: result?.durationMs ?? 0,
+          results: agentResults,
+          defaultModel: state.cfg.model,
+        });
 
         await recordReviewRun(state.env, run, subagents);
         // Mark so main.ts's failure-path persistence doesn't double-write if a
