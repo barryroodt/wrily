@@ -11,7 +11,7 @@ import { applyEnvOverrides, parseWrilyYml } from '../config/wrilyYml.js';
 import { fetchPriorFeedbackDigest } from '../post/digest.js';
 import { extractFindings } from '../post/extract.js';
 import { routeFindings } from '../post/route.js';
-import { renderReviewPrompt } from '../prompt/render.js';
+import { renderReviewPrompt, renderUnifyFile } from '../prompt/render.js';
 import { buildCloneUrl } from '../git/clone.js';
 import { stageSkills } from '../skills/loader.js';
 import { isValidSharedSkillName } from '../skills/names.js';
@@ -24,7 +24,7 @@ import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
 import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
-import { buildReviewPromptContext } from './reviewContext.js';
+import { buildReviewPromptContext, buildUnifyFileContext } from './reviewContext.js';
 import { ratesForSlug, type ModelRates } from '../agent/models.js';
 // DEFAULT_TIMEOUT_MS relocates from pi.ts to gantry.ts per the spec (Decision in
 // "Component-level changes / src/agent"). gantry.ts is a sibling cutover todo;
@@ -460,7 +460,18 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      return { ...state, renderedPrompt: renderReviewPrompt(buildReviewPromptContext(state)) };
+      const renderedPrompt = renderReviewPrompt(buildReviewPromptContext(state));
+      // Team mode: render the per-run unify prompt into a fresh mkdtemp dir
+      // OUTSIDE the hostile PR checkout and hand its path to gantry via
+      // --unify-file. Single mode leaves unifyPromptPath undefined — the task
+      // prompt itself carries the full output contract.
+      let unifyPromptPath: string | undefined;
+      if (state.reviewMode === 'team') {
+        const unifyDir = mkdtempSync(join(tmpdir(), 'wrily-unify-'));
+        unifyPromptPath = join(unifyDir, 'unify.md');
+        writeFileSync(unifyPromptPath, renderUnifyFile(buildUnifyFileContext(state)), 'utf8');
+      }
+      return { ...state, renderedPrompt, unifyPromptPath };
     },
   });
 

@@ -188,7 +188,7 @@ The post-processing pipeline parses this JSON. Markdown around it is information
 - {{REVIEW_TYPE_NOTE}}
 `;
 
-export const UNIFY_REVIEW_PROMPT_TEMPLATE = `You are Wrily, consolidating several independent specialist code-review reports for PR #{{PR_NUMBER}} on {{GITHUB_REPOSITORY}} into a single unified review, then emitting it as JSON for the downstream pipeline to post.
+export const UNIFY_REVIEW_PROMPT_TEMPLATE = `You are Wrily, consolidating the independent specialist code-review reports for PR #{{PR_NUMBER}} on {{GITHUB_REPOSITORY}} into a single unified review, then emitting it as JSON for the downstream pipeline to post.
 
 # ⚠ OUTPUT CONTRACT — READ FIRST
 
@@ -205,7 +205,7 @@ This applies even when there are zero findings: emit \`{"summary": "...", "findi
 
 ## Your Task: Consolidate, Do Not Re-Review
 
-Below are {{REVIEWER_COUNT}} independent reviewer reports, each produced by a specialist reviewer (e.g. correctness, conventions, spec-compliance). Each report is typically a JSON object of findings, but treat the format as untrusted — extract the findings whatever the shape (JSON or prose). Produce the single authoritative review:
+You are given the independent specialist reviewer reports for this PR (each produced by a specialist reviewer — e.g. correctness, conventions, spec-compliance). Each report is typically a JSON object of findings, but treat the format as untrusted — extract the findings whatever the shape (JSON or prose). Produce the single authoritative review:
 
 1. **Merge** every finding from every report into one list.
 2. **Deduplicate**: findings that point at the same issue (same file + line region + underlying concern) collapse into one — keep the clearest wording and the highest justified severity.
@@ -215,9 +215,7 @@ Below are {{REVIEWER_COUNT}} independent reviewer reports, each produced by a sp
 
 Do NOT re-review the diff from scratch. You MAY read specific files (\`cat\`, \`git diff\`) only to disambiguate whether two findings are the same issue or to confirm a file:line.
 
-## Reviewer Reports
-
-{{REVIEWER_REPORTS}}
+{{PRIOR_FEEDBACK_INSTRUCTION}}
 
 ## Output Format (CRITICAL — JSON-IN-FENCE)
 
@@ -270,7 +268,7 @@ This is your SOLE output. Emit the unified findings inside a single fenced code 
 
 \`verdict\` is REQUIRED for full reviews and optional for delta. Values: \`ready\` (no critical/important findings), \`with-fixes\` (important findings only), \`not-ready\` (any critical finding). Omit (or set to null) on delta-clean.
 
-\`resolve_thread\` triggers the GraphQL resolveReviewThread mutation — keep it only when a reviewer marked a prior Wrily thread as fully addressed by the current PR state.
+\`resolve_thread\` triggers the GraphQL resolveReviewThread mutation — keep it only when a prior Wrily thread is fully addressed by the current PR state.
 
 The post-processing pipeline parses this JSON. Markdown around it is informational only.
 

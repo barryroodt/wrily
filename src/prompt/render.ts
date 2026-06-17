@@ -19,17 +19,22 @@ export type PromptContext = {
   reviewTypeNote: string;
 };
 
-/** Context for the team-mode unify pass that merges reviewer reports. */
-export type UnifyPromptContext = {
+/**
+ * Context for the per-run team-mode unify FILE (gantry's --unify-file). Gantry
+ * supplies the specialist reviewer reports to the unify phase itself, so this
+ * carries no reviewer reports/count — only the instruction strings + the digest
+ * (prior-feedback) instructions the unify phase needs to emit the four-action
+ * contract.
+ */
+export type UnifyFileContext = {
   prNumber: number;
   githubRepository: string;
-  reviewerCount: number;
-  reviewerReports: string;
   styleInstruction: string;
   sensitivityInstruction: string;
   deltaCleanInstruction: string;
   resolveThreadsInstruction: string;
   confidenceInstruction: string;
+  priorFeedbackInstruction: string;
   reviewTypeNote: string;
 };
 
@@ -70,18 +75,22 @@ export function renderReviewPrompt(ctx: PromptContext): string {
   });
 }
 
-/** Render the team-mode unify prompt that consolidates reviewer reports. */
-export function renderUnifyPrompt(ctx: UnifyPromptContext): string {
+/**
+ * Render the per-run team-mode unify file (gantry's --unify-file). Same
+ * templating as the review body; gantry feeds the specialist reviewer reports
+ * into the unify phase itself, so this carries instructions + the four-action
+ * output contract, not the reports.
+ */
+export function renderUnifyFile(ctx: UnifyFileContext): string {
   return applyTemplate(UNIFY_REVIEW_PROMPT_TEMPLATE, {
     PR_NUMBER: String(ctx.prNumber),
     GITHUB_REPOSITORY: ctx.githubRepository,
-    REVIEWER_COUNT: String(ctx.reviewerCount),
-    REVIEWER_REPORTS: ctx.reviewerReports,
     STYLE_INSTRUCTION: ctx.styleInstruction,
     SENSITIVITY_INSTRUCTION: ctx.sensitivityInstruction,
     DELTA_CLEAN_INSTRUCTION: ctx.deltaCleanInstruction,
     RESOLVE_THREADS_INSTRUCTION: ctx.resolveThreadsInstruction,
     CONFIDENCE_INSTRUCTION: ctx.confidenceInstruction,
+    PRIOR_FEEDBACK_INSTRUCTION: ctx.priorFeedbackInstruction,
     REVIEW_TYPE_NOTE: ctx.reviewTypeNote,
   });
 }
