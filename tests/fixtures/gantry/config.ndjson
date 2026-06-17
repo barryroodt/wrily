@@ -1,0 +1,2 @@
+{"event":"error","ts":1781688600623,"kind":"config","message":"CLI parse error: error: the following required arguments were not provided:\n  --model <PROVIDER/MODEL>\n\nUsage: gantry --model <PROVIDER/MODEL> --workdir <WORKDIR> --prompt-file <PROMPT_FILE> --max-tokens <MAX_TOKENS> --timeout-ms <TIMEOUT_MS> --mode <MODE>\n\nFor more information, try '--help'.\n","recoverable":false}
+{"event":"result","ts":1781688600624,"exit":"config","total_input":0,"total_output":0,"total_cache_read":0,"total_cache_write":0,"duration_ms":2}

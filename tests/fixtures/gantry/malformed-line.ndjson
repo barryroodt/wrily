@@ -1,0 +1,6 @@
+{"event":"start","ts":1781688634242,"schema_version":"1.1","model":"dummy","provider":"local","mode":"single","workdir":"/private/tmp"}
+{"event":"agent_turn","ts":1781688634253,"role":"single","turn":0,"input_tokens":120,"output_tokens":24,"cache_read":0,"cache_write":0,"duration_ms":2}
+this is not valid json at all {{{ <- injected garbage mid-stream
+{"ts":1781688634253,"role":"single","text":"json object but no event discriminant"}
+{"event":"assistant_text","ts":1781688634253,"role":"single","text":"LGTM: no issues found."}
+{"event":"result","ts":1781688634253,"exit":"ok","total_input":120,"total_output":24,"total_cache_read":0,"total_cache_write":0,"duration_ms":12}
