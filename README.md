@@ -368,3 +368,5 @@ See [docs/writing-skills.md](docs/writing-skills.md). Specialist skills land und
 - [Writing skills](docs/writing-skills.md) — how to write custom reviewer skills
 - [`integrations/cloudflare-worker/RUNBOOK.md`](integrations/cloudflare-worker/RUNBOOK.md) — Worker setup, deploy, rotate, observe
 - [Security policy](SECURITY.md) — reporting vulnerabilities, supported versions, scope
+
+<!-- g3 pipeline smoke: trivial change to exercise wrily review -->
