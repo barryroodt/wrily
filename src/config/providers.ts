@@ -3,11 +3,12 @@
  *
  * Single source of truth for `config/env.ts`, whose auth gate requires at least
  * one of these to be set. Wrily narrows to gantry's three supported providers:
- * `anthropic`, `openai`, and `google` (Gemini, authenticated via
+ * `anthropic` (`ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` for local
+ * OAuth-token auth), `openai`, and `google` (Gemini, authenticated via
  * `GEMINI_API_KEY`). The canonical model slug form is `google/<model>`.
  */
 export const PROVIDER_API_KEY_ENV: Readonly<Record<string, readonly string[]>> = {
-  anthropic: ['ANTHROPIC_API_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'],
   openai: ['OPENAI_API_KEY'],
   google: ['GEMINI_API_KEY'],
 };
@@ -17,8 +18,8 @@ const PROVIDER_API_KEY_ENV_VARS: readonly string[] = Object.values(PROVIDER_API_
 
 /**
  * True when at least one recognized provider API-key env var — one of
- * `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` — is present and
- * non-empty in `env`. Backs the env auth gate.
+ * `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, or
+ * `GEMINI_API_KEY` — is present and non-empty in `env`. Backs the env auth gate.
  */
 export function hasAnyProviderAuth(env: Record<string, string | undefined>): boolean {
   return PROVIDER_API_KEY_ENV_VARS.some((name) => {

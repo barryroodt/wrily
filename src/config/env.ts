@@ -68,7 +68,7 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   if (!hasAnyProviderAuth(raw)) {
     throw new Error(
       'No provider API key configured. Set one of ANTHROPIC_API_KEY, ' +
-        'OPENAI_API_KEY, or GEMINI_API_KEY.',
+        'CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, or GEMINI_API_KEY.',
     );
   }
 
@@ -103,7 +103,8 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     modelOverride: parsed.MODEL,
     maxTokens: parsed.MAX_TOKENS ? Number.parseInt(parsed.MAX_TOKENS, 10) : undefined,
     wrilyGantryBin: parsed.WRILY_GANTRY_BIN || undefined,
-    allowUnknownModel: parsed.WRILY_ALLOW_UNKNOWN_MODEL === '1',
+    allowUnknownModel:
+      parsed.WRILY_ALLOW_UNKNOWN_MODEL === '1' || parsed.WRILY_ALLOW_UNKNOWN_MODEL === 'true',
     dryRun: parsed.DRY_RUN === 'true',
     prAuthorLogin: parsed.PR_AUTHOR_LOGIN,
     triggerSource: parsed.WRILY_TRIGGER_SOURCE,

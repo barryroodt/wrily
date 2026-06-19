@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import type { WorkflowState } from './state.js';
 import type { ReviewType } from '../config/types.js';
-import { applyEnvOverrides, parseWrilyYml } from '../config/wrilyYml.js';
+import { applyEnvOverrides, parseWrilyYml, defaultMaxTokens } from '../config/wrilyYml.js';
 import { fetchPriorFeedbackDigest } from '../post/digest.js';
 import { extractFindings } from '../post/extract.js';
 import { routeFindings } from '../post/route.js';
@@ -26,9 +26,6 @@ import { markUsagePersisted } from '../persist/state.js';
 import { buildReviewPromptContext, buildUnifyFileContext } from './reviewContext.js';
 import { ratesForSlug } from '../agent/models.js';
 import { buildUsageRecords, type UsageRunBase } from '../persist/usage.js';
-// DEFAULT_TIMEOUT_MS relocates from pi.ts to gantry.ts per the spec (Decision in
-// "Component-level changes / src/agent"). gantry.ts is a sibling cutover todo;
-// this import resolves once it lands. [cross-todo dep — see commit note]
 import { DEFAULT_TIMEOUT_MS } from '../agent/gantry.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
@@ -47,14 +44,6 @@ const GIT_TIMEOUT_MS = 120_000;
  * never shadow one of these names.
  */
 const INVARIANT_SKILLS = ['agent-team-review', 'code-review', 'confidence-rating', 'caveman-review'] as const;
-
-/**
- * Token-budget defaults by review mode (Decision 3 — placeholders to calibrate
- * against supabase token history before merge). Used when `.wrily.yml`
- * `max_tokens` is unset.
- */
-const DEFAULT_MAX_TOKENS_SINGLE = 2_000_000;
-const DEFAULT_MAX_TOKENS_TEAM = 8_000_000;
 
 /**
  * Resolve wrily's in-tree `skills/` directory (the trusted invariant set).
@@ -466,8 +455,7 @@ export function makeSteps(deps: WorkflowDeps) {
       const state = inputData;
       // resolveReviewStep narrows reviewMode to single|team; map auto defensively.
       const mode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
-      const maxTokens =
-        state.cfg.max_tokens ?? (mode === 'team' ? DEFAULT_MAX_TOKENS_TEAM : DEFAULT_MAX_TOKENS_SINGLE);
+      const maxTokens = state.cfg.max_tokens ?? defaultMaxTokens(mode);
       // Post-cutover the team lives inside gantry: one run, one result. Per-role
       // telemetry rides result.events; persistUsageStep unpacks it.
       const result = await deps.agentRunner.run({
@@ -678,7 +666,7 @@ export function makeSteps(deps: WorkflowDeps) {
           review_round: state.reviewRoundIndex ?? state.env.reviewRoundIndex ?? 0,
           review_mode: reviewMode,
           scope: state.reviewType === 'delta' ? 'delta' : 'full',
-          max_tokens: state.cfg.max_tokens ?? null,
+          max_tokens: state.cfg.max_tokens ?? defaultMaxTokens(reviewMode),
           status,
           findings_posted: status === 'success' ? (state.findings ? state.findings.length : 0) : null,
         };

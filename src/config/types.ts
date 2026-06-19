@@ -27,16 +27,11 @@ export type WrilyConfig = {
 
 export type RuntimeEnv = {
   // Provider API keys, mirrored from the environment as parsed-env state.
-  // pi reads provider keys from process.env at run time; these back the
-  // auth gate and diagnostics. Bedrock auth is ambient (AWS creds) and not
-  // represented here.
+  // gantry reads provider keys from its process env at run time; these back
+  // the auth gate and diagnostics. Narrowed to wrily's three providers.
   anthropicApiKey?: string | null;
   openaiApiKey?: string | null;
   geminiApiKey?: string | null;
-  googleCloudApiKey?: string | null;
-  mistralApiKey?: string | null;
-  azureOpenaiApiKey?: string | null;
-  cloudflareApiKey?: string | null;
   githubToken: string;
   prNumber: number;
   githubRepository: string;
@@ -56,7 +51,7 @@ export type RuntimeEnv = {
    * at the composition root).
    */
   wrilyGantryBin?: string;
-  /** Unknown-model escape hatch from `WRILY_ALLOW_UNKNOWN_MODEL=1`; persists unknown models with `cost_usd = 0` and a loud warn. */
+  /** Unknown-model escape hatch from `WRILY_ALLOW_UNKNOWN_MODEL` (`1` or `true`); persists unknown models with `cost_usd = 0` and a loud warn. */
   allowUnknownModel: boolean;
   dryRun: boolean;
   prAuthorLogin: string;

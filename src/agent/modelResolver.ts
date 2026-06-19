@@ -91,9 +91,8 @@ export const MANIFEST_LOOKUP: ModelLookup = {
  * caller from `RuntimeEnv.allowUnknownModel`, i.e. `WRILY_ALLOW_UNKNOWN_MODEL=1`),
  * a reference that matches no manifest model passes through unchanged with a
  * loud warning instead of throwing — such runs have no cost rates and callers
- * bill them at 0. When `allowUnknown` is omitted it falls back to reading
- * `process.env.WRILY_ALLOW_UNKNOWN_MODEL` directly (a param from the caller is
- * preferred; the env fallback keeps the resolver usable before C2 wires it).
+ * bill them at 0. `allowUnknown` is threaded from the composition root (default
+ * `false`); the resolver never reads `process.env` itself.
  *
  * @throws {UnknownModelError} when the reference resolves to no manifest model
  *   (or to an ambiguous bare id) and the escape hatch is not set.
@@ -128,8 +127,7 @@ export function resolveModel(
 
   // No manifest match. Either admit it via the escape hatch (unchanged + warn,
   // billed at 0) or reject loudly.
-  const allowUnknown =
-    opts.allowUnknown ?? process.env.WRILY_ALLOW_UNKNOWN_MODEL === '1';
+  const allowUnknown = opts.allowUnknown ?? false;
   if (allowUnknown) {
     console.warn(
       `[modelResolver] WRILY_ALLOW_UNKNOWN_MODEL set — passing unknown model ` +

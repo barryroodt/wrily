@@ -108,23 +108,18 @@ describe('WRILY_ALLOW_UNKNOWN_MODEL escape hatch', () => {
     expect(warn.mock.calls[0]![0]).toMatch(/WRILY_ALLOW_UNKNOWN_MODEL/);
   });
 
-  it('honors the process.env fallback when no param is threaded', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('ignores process.env (the resolver never reads it post-cutover)', () => {
     process.env.WRILY_ALLOW_UNKNOWN_MODEL = '1';
-    expect(resolveModel('acme/experimental-7')).toBe('acme/experimental-7');
-    expect(warn).toHaveBeenCalledOnce();
-  });
-
-  it('still throws when the flag is off even if env is some other value', () => {
-    process.env.WRILY_ALLOW_UNKNOWN_MODEL = '0';
     expect(() => resolveModel('acme/experimental-7')).toThrow(UnknownModelError);
+    delete process.env.WRILY_ALLOW_UNKNOWN_MODEL;
   });
 
-  it('an explicit allowUnknown:false overrides a set env var', () => {
+  it('an explicit allowUnknown:false throws even if the env var is set', () => {
     process.env.WRILY_ALLOW_UNKNOWN_MODEL = '1';
     expect(() =>
       resolveModel('acme/experimental-7', MANIFEST_LOOKUP, { allowUnknown: false }),
     ).toThrow(UnknownModelError);
+    delete process.env.WRILY_ALLOW_UNKNOWN_MODEL;
   });
 });
 

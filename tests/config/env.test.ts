@@ -39,25 +39,17 @@ describe('parseEnv', () => {
     }
   });
 
+  it('accepts CLAUDE_CODE_OAUTH_TOKEN as the sole anthropic auth source', () => {
+    expect(() =>
+      parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-tok' }),
+    ).not.toThrow();
+  });
+
   it('exposes retained provider keys and nulls absent ones', () => {
     const env = parseEnv({ ...minimal, OPENAI_API_KEY: 'sk-openai' });
     expect(env.anthropicApiKey).toBe('sk-ant-xxx');
     expect(env.openaiApiKey).toBe('sk-openai');
     expect(env.geminiApiKey).toBeNull();
-  });
-
-  it('no longer surfaces the dropped provider keys', () => {
-    const env = parseEnv({
-      ...minimal,
-      GOOGLE_CLOUD_API_KEY: 'x',
-      MISTRAL_API_KEY: 'x',
-      AZURE_OPENAI_API_KEY: 'x',
-      CLOUDFLARE_API_KEY: 'x',
-    });
-    expect('googleCloudApiKey' in env).toBe(false);
-    expect('mistralApiKey' in env).toBe(false);
-    expect('azureOpenaiApiKey' in env).toBe(false);
-    expect('cloudflareApiKey' in env).toBe(false);
   });
 
   it('throws when no recognized provider key is configured', () => {
@@ -142,11 +134,11 @@ describe('parseEnv', () => {
     );
   });
 
-  it('reads WRILY_ALLOW_UNKNOWN_MODEL: defaults to false, true only for "1"', () => {
+  it('reads WRILY_ALLOW_UNKNOWN_MODEL: defaults to false, true for "1" or "true"', () => {
     expect(parseEnv(minimal).allowUnknownModel).toBe(false);
     expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: '1' }).allowUnknownModel).toBe(true);
     expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: '0' }).allowUnknownModel).toBe(false);
-    expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: 'true' }).allowUnknownModel).toBe(false);
+    expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: 'true' }).allowUnknownModel).toBe(true);
   });
 
   it('populates prAuthorLogin/triggerSource/actor when present and defaults when absent', () => {
