@@ -60,7 +60,7 @@ describe('parseEnv', () => {
 
   it('throws when no recognized provider key is configured, listing the known keys', () => {
     expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/provider API key/i);
-    // Message is derived from PROVIDER_API_KEY_ENV_VARS — guard against re-hardcoding.
+    // The message must name every supported provider key (incl. the newest).
     expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/OPENROUTER_API_KEY/);
   });
 

@@ -16,9 +16,8 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, readonly string[]>> =
   openrouter: ['OPENROUTER_API_KEY'],
 };
 
-/** Every recognized provider API-key env var name. The canonical list. */
-export const PROVIDER_API_KEY_ENV_VARS: readonly string[] =
-  Object.values(PROVIDER_API_KEY_ENV).flat();
+/** Every recognized provider API-key env var name. */
+const PROVIDER_API_KEY_ENV_VARS: readonly string[] = Object.values(PROVIDER_API_KEY_ENV).flat();
 
 /**
  * True when at least one env var listed in {@link PROVIDER_API_KEY_ENV} is
