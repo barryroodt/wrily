@@ -132,8 +132,8 @@ STYLE=verbose ./wrily your-org/your-repo 2209
 
 | Mode | When | Default budget | What runs |
 |------|------|---------------|-----------|
-| **Single** | <`team_threshold` files/folders changed | $5 | One reviewer, 8 review criteria |
-| **Team** | ≥`team_threshold` files/folders changed | $15 | Parallel agents: correctness, conventions, contracts, spec-compliance |
+| **Single** | <`team_threshold` files/folders changed | 2M tokens | One reviewer, 8 review criteria |
+| **Team** | ≥`team_threshold` files/folders changed | 8M tokens | Parallel agents: correctness, conventions, contracts, spec-compliance |
 | **Auto** (default) | — | varies | Picks single or team based on file scope |
 
 `team_threshold` defaults to 5 and `team_threshold_unit` defaults to `files`; override either per-repo in `.wrily.yml`. With `team_threshold_unit: folders`, Wrily counts distinct changed parent directories such as `src/api` and `src/db`, not only top-level repo folders.

@@ -56,10 +56,19 @@ const ASSISTANT_TEXT_CAP_CHARS = 1024 * 1024;
 /** Captured stderr cap. */
 const STDERR_CAP_CHARS = 256 * 1024;
 
-/** Max whole-run attempts when gantry exits `rate_limited` (exit 5). */
+/**
+ * Max whole-run attempts when gantry exits `rate_limited` (exit 5). Three is the
+ * conventional transient-429 retry count; every attempt honors the error
+ * event's `retry_after_ms` and is hard-bounded by the run deadline (a retry that
+ * would overrun the remaining budget is skipped — see `run()`), so the cap only
+ * limits churn against a persistently throttled provider, never wall time.
+ */
 const MAX_RATE_LIMIT_ATTEMPTS = 3;
 
-/** Backoff used between rate-limit retries when the error event omits a hint. */
+/**
+ * Linear backoff (×attempt) between rate-limit retries, used ONLY when the error
+ * event omits `retry_after_ms`. The provider's hint wins whenever present.
+ */
 const DEFAULT_RETRY_BACKOFF_MS = 1_000;
 
 /** Static observability hooks; sync and fire-and-forget in v1. */

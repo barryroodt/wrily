@@ -140,8 +140,8 @@ describe('GantryRunner — completed run → AgentResult (result event authorita
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     });
-    // opus rates input=15 output=75 per MTok → 120/1e6*15 + 24/1e6*75.
-    expect(res.tokenUsage?.costUsd).toBeCloseTo((120 * 15 + 24 * 75) / 1_000_000, 8);
+    // opus rates input=5 output=25 per MTok → 120/1e6*5 + 24/1e6*25.
+    expect(res.tokenUsage?.costUsd).toBeCloseTo((120 * 5 + 24 * 25) / 1_000_000, 8);
   });
 
   it('team run: final stdout is the coordinator (unify) text, not lane reports', async () => {
@@ -159,7 +159,7 @@ describe('GantryRunner — completed run → AgentResult (result event authorita
     expect(kinds).toContain('changes');
 
     expect(res.tokenUsage).toMatchObject({ inputTokens: 1600, outputTokens: 480 });
-    expect(res.tokenUsage?.costUsd).toBeCloseTo((1600 * 15 + 480 * 75) / 1_000_000, 8);
+    expect(res.tokenUsage?.costUsd).toBeCloseTo((1600 * 5 + 480 * 25) / 1_000_000, 8);
   });
 });
 

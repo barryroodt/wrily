@@ -36,12 +36,19 @@ export function parseWrilyYml(yamlContent: string): WrilyConfig {
 }
 
 /**
- * Token-budget defaults by review mode (Decision 3). Applied downstream when
- * `.wrily.yml` `max_tokens` is unset.
+ * Per-mode token-budget ceilings (Decision 3). Applied as the `--max-tokens`
+ * cap when `.wrily.yml` `max_tokens` is unset. gantry counts
+ * `input + output + cache_write` against this and EXCLUDES `cache_read`, so a
+ * long agentic review (where cache hits dominate re-reads) bills far less
+ * against the cap than its raw context size suggests.
  *
- * CALIBRATE before merge: these are placeholders — size against supabase token
- * history. gantry's `--max-tokens` counts `input + output + cache_write` and
- * excludes `cache_read`, so calibrate against exactly that accounting.
+ * These are abort backstops, not targets: a review that never reaches the cap
+ * costs nothing extra, while too low a cap truncates a legitimate large review
+ * (gantry exits `budget`). Sized above the timeout-bounded worst case — a
+ * single `DEFAULT_TIMEOUT_MS` (12-minute) review accrues well under 1M billable
+ * tokens, so 2M leaves ~2x headroom; a team review runs 3 specialist lanes +
+ * unify in one gantry process (~4x the work) → 8M. Re-tune from persisted
+ * `review_runs.max_tokens` / token-usage p99 once history accumulates.
  */
 export const DEFAULT_MAX_TOKENS_SINGLE = 2_000_000;
 export const DEFAULT_MAX_TOKENS_TEAM = 8_000_000;

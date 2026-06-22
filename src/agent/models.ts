@@ -15,9 +15,10 @@
  * Canonical provider slug for Gemini is `google/<model>` (NOT `gemini/`); the
  * Google API key env var stays `GEMINI_API_KEY`.
  *
- * Rates are USD per 1,000,000 tokens. // CALIBRATE before merge — these are
- * best-known public list prices at authoring time; confirm against current
- * provider pricing before the cutover lands (see plan "Open calibrations" #2).
+ * Rates are USD per 1,000,000 tokens, verified 2026-06-17 against published
+ * provider list pricing (Anthropic / OpenAI / Google). Cache rates follow the
+ * Anthropic convention: cacheRead = 0.1x input, cacheWrite = 1.25x input
+ * (5-minute TTL). Re-verify when a model's tier pricing changes.
  */
 
 /** Per-MTok USD rates (cost per 1,000,000 tokens). */
@@ -46,26 +47,27 @@ export interface ModelManifestEntry {
  * The manifest. Default model is `anthropic/claude-opus-4-8` (see
  * `DEFAULT_MODEL_SLUG` in `modelResolver.ts`).
  *
- * // CALIBRATE before merge: rate values below are best-known public list
- * prices and MUST be reconciled against current provider pricing.
+ * Rate values below were reconciled against current provider list pricing on
+ * 2026-06-17.
  */
 export const MODEL_MANIFEST: readonly ModelManifestEntry[] = [
   {
     slug: 'anthropic/claude-opus-4-8',
     aliases: ['opus'],
-    // Anthropic Claude Opus 4.x list pricing.
-    rates: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+    // Anthropic Claude Opus 4.8 list pricing (verified 2026-06-17): $5/$25 per
+    // MTok; cacheRead 0.1x, cacheWrite 1.25x (5-min) input.
+    rates: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   },
   {
     slug: 'anthropic/claude-sonnet-4-6',
     aliases: ['sonnet'],
-    // Anthropic Claude Sonnet 4.x list pricing.
+    // Anthropic Claude Sonnet 4.6 list pricing (verified 2026-06-17): $3/$15 per MTok.
     rates: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   },
   {
     slug: 'anthropic/claude-haiku-4-5',
     aliases: ['haiku'],
-    // Anthropic Claude Haiku 4.x list pricing.
+    // Anthropic Claude Haiku 4.5 list pricing (verified 2026-06-17): $1/$5 per MTok.
     rates: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   },
   {
