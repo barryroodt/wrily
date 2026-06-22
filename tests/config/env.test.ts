@@ -58,8 +58,10 @@ describe('parseEnv', () => {
     expect(env.anthropicApiKey).toBeNull();
   });
 
-  it('throws when no recognized provider key is configured', () => {
+  it('throws when no recognized provider key is configured, listing the known keys', () => {
     expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/provider API key/i);
+    // Message is derived from PROVIDER_API_KEY_ENV_VARS — guard against re-hardcoding.
+    expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/OPENROUTER_API_KEY/);
   });
 
   it('throws when GITHUB_TOKEN is missing', () => {

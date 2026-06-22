@@ -16,14 +16,13 @@ export const PROVIDER_API_KEY_ENV: Readonly<Record<string, readonly string[]>> =
   openrouter: ['OPENROUTER_API_KEY'],
 };
 
-/** Every recognized provider API-key env var name. */
-const PROVIDER_API_KEY_ENV_VARS: readonly string[] = Object.values(PROVIDER_API_KEY_ENV).flat();
+/** Every recognized provider API-key env var name. The canonical list. */
+export const PROVIDER_API_KEY_ENV_VARS: readonly string[] =
+  Object.values(PROVIDER_API_KEY_ENV).flat();
 
 /**
- * True when at least one recognized provider API-key env var — one of
- * `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`,
- * `GEMINI_API_KEY`, or `OPENROUTER_API_KEY` — is present and non-empty in
- * `env`. Backs the env auth gate.
+ * True when at least one env var listed in {@link PROVIDER_API_KEY_ENV} is
+ * present and non-empty in `env`. Backs the env auth gate.
  */
 export function hasAnyProviderAuth(env: Record<string, string | undefined>): boolean {
   return PROVIDER_API_KEY_ENV_VARS.some((name) => {

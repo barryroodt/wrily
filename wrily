@@ -196,17 +196,13 @@ if ! has_provider_auth; then
   exit 1
 fi
 
-if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "Auth:      anthropic API key"
-elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-  echo "Auth:      anthropic OAuth token"
-elif [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
-  echo "Auth:      OpenRouter API key"
-elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
-  echo "Auth:      OpenAI API key"
-else
-  echo "Auth:      Gemini API key"
-fi
+# gantry selects the provider from the MODEL slug, so just report which keys are
+# available rather than guessing the active one.
+PRESENT_KEYS=()
+for var in "${PROVIDER_KEY_VARS[@]}"; do
+  [[ -n "${!var:-}" ]] && PRESENT_KEYS+=("$var")
+done
+echo "Auth:      ${PRESENT_KEYS[*]}"
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
 if [[ -z "$GITHUB_TOKEN" ]]; then

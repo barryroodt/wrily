@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RuntimeEnv } from './types.js';
-import { hasAnyProviderAuth } from './providers.js';
+import { hasAnyProviderAuth, PROVIDER_API_KEY_ENV_VARS } from './providers.js';
 
 const rawEnvSchema = z.object({
   // Allow empty string (common in .env files) — parseEnv() checks that at
@@ -68,8 +68,7 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
 
   if (!hasAnyProviderAuth(raw)) {
     throw new Error(
-      'No provider API key configured. Set one of ANTHROPIC_API_KEY, ' +
-        'CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY.',
+      `No provider API key configured. Set one of: ${PROVIDER_API_KEY_ENV_VARS.join(', ')}.`,
     );
   }
 
