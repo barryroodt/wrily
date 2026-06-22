@@ -19,10 +19,10 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@types/node": "22.19.19",
-    "@vitest/coverage-v8": "4.1.8",
+    "@types/node": "22.20.0",
+    "@vitest/coverage-v8": "4.1.9",
     "typescript": "5.9.3",
-    "vitest": "4.1.8"
+    "vitest": "4.1.9"
   },
   "engines": {
     "node": ">=22"
