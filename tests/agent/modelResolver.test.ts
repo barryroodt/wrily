@@ -123,6 +123,42 @@ describe('WRILY_ALLOW_UNKNOWN_MODEL escape hatch', () => {
   });
 });
 
+describe('resolveModel OpenRouter open catalog', () => {
+  it('passes a vendor-qualified openrouter slug through verbatim (no escape hatch)', () => {
+    expect(resolveModel('openrouter/anthropic/claude-3.5-sonnet')).toBe(
+      'openrouter/anthropic/claude-3.5-sonnet',
+    );
+  });
+
+  it('accepts a :free openrouter model id', () => {
+    expect(resolveModel('openrouter/deepseek/deepseek-chat-v3-0324:free')).toBe(
+      'openrouter/deepseek/deepseek-chat-v3-0324:free',
+    );
+  });
+
+  it('accepts a single-segment openrouter id (e.g. the auto router)', () => {
+    expect(resolveModel('openrouter/auto')).toBe('openrouter/auto');
+  });
+
+  it('does not warn for openrouter passthrough (it is first-class, not the escape hatch)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resolveModel('openrouter/meta-llama/llama-3.3-70b-instruct:free');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('still rejects an openrouter slug with an empty model id', () => {
+    expect(() => resolveModel('openrouter/')).toThrow(UnknownModelError);
+  });
+
+  it('openrouter models carry no manifest rates, so usage bills at 0', () => {
+    expect(ratesForSlug('openrouter/anthropic/claude-3.5-sonnet')).toBeUndefined();
+  });
+
+  it('does not extend the open catalog to other unknown providers', () => {
+    expect(() => resolveModel('acme/experimental-7')).toThrow(UnknownModelError);
+  });
+});
+
 describe('models.ts manifest', () => {
   it('returns per-MTok rates for a known slug', () => {
     const rates = ratesForSlug(DEFAULT_MODEL_SLUG);

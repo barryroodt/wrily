@@ -8,6 +8,7 @@ const rawEnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
   GITHUB_TOKEN: z.string().min(1, 'GITHUB_TOKEN is required'),
   PR_NUMBER: z.string().regex(/^[1-9]\d*$/, 'PR_NUMBER must be a positive integer'),
   GITHUB_REPOSITORY: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}\/[A-Za-z0-9._-]{1,100}$/, 'GITHUB_REPOSITORY must be "owner/repo"'),
@@ -68,7 +69,7 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
   if (!hasAnyProviderAuth(raw)) {
     throw new Error(
       'No provider API key configured. Set one of ANTHROPIC_API_KEY, ' +
-        'CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, or GEMINI_API_KEY.',
+        'CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY.',
     );
   }
 
@@ -89,6 +90,7 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     anthropicApiKey: parsed.ANTHROPIC_API_KEY ?? null,
     openaiApiKey: parsed.OPENAI_API_KEY ?? null,
     geminiApiKey: parsed.GEMINI_API_KEY ?? null,
+    openrouterApiKey: parsed.OPENROUTER_API_KEY ?? null,
     githubToken: parsed.GITHUB_TOKEN,
     prNumber: Number.parseInt(parsed.PR_NUMBER, 10),
     githubRepository: parsed.GITHUB_REPOSITORY,

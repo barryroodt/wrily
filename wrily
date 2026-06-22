@@ -12,11 +12,33 @@
 # Prerequisites:
 #   - Docker
 #   - gh CLI (authenticated: gh auth login)
-#   - One of: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (in env or .env)
+#   - A provider API key for your MODEL: ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN
+#     (anthropic), OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY (in env or .env)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Provider API-key env vars Wrily understands (one must be set for the chosen
+# MODEL). Forwarded into the container verbatim; OPENROUTER_* extras are
+# optional OpenRouter overrides passed straight through to gantry.
+PROVIDER_KEY_VARS=(
+  ANTHROPIC_API_KEY
+  CLAUDE_CODE_OAUTH_TOKEN
+  OPENAI_API_KEY
+  GEMINI_API_KEY
+  OPENROUTER_API_KEY
+)
+PROVIDER_EXTRA_VARS=(OPENROUTER_BASE_URL OPENROUTER_HTTP_REFERER OPENROUTER_X_TITLE)
+
+# True when at least one provider API key is present in the environment.
+has_provider_auth() {
+  local var
+  for var in "${PROVIDER_KEY_VARS[@]}"; do
+    [[ -n "${!var:-}" ]] && return 0
+  done
+  return 1
+}
 
 # ---------------------------------------------------------------------------
 # Subcommand dispatch: `wrily costs ...` and `wrily persistence <sub> ...`
@@ -76,9 +98,12 @@ for arg in "$@"; do
       echo "  MODEL=sonnet     Use a different model (default: opus)"
       echo "  MAX_TOKENS=2000000  Token budget cap (default: 2M single / 8M team)"
       echo ""
-      echo "Authentication (set one, or add to .env):"
-      echo "  ANTHROPIC_API_KEY          API key from console.anthropic.com"
-      echo "  CLAUDE_CODE_OAUTH_TOKEN    OAuth token (run: claude setup-token)"
+      echo "Authentication (set the one matching your MODEL, or add to .env):"
+      echo "  ANTHROPIC_API_KEY          anthropic slugs (default); console.anthropic.com"
+      echo "  CLAUDE_CODE_OAUTH_TOKEN    anthropic OAuth token (run: claude setup-token)"
+      echo "  OPENAI_API_KEY             openai/... slugs"
+      echo "  GEMINI_API_KEY             google/... slugs"
+      echo "  OPENROUTER_API_KEY         openrouter/<vendor>/<model> slugs (e.g. openrouter/openrouter/free)"
       echo ""
       echo "Subcommands:"
       echo "  ./wrily costs [--since 30d] [--by repo|model|day]   Show spend rollups"
@@ -139,7 +164,7 @@ echo "Commit:    ${COMMIT_SHA:0:8}"
 # the file when at least one expected key is missing — keeps existing
 # shell-exported auth in charge while filling in Supabase blanks.
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
-  if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+  if ! has_provider_auth \
      || [[ -z "${SUPABASE_URL:-}" ]] \
      || [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
     # Set -a temporarily so KEY=val lines export into the env we pass on
@@ -151,24 +176,36 @@ if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   fi
 fi
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+if ! has_provider_auth; then
+  # Convenience: derive a Claude OAuth token from the local CLI when no provider
+  # key is set at all. No-op when `claude` isn't configured.
   CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-$(claude auth status 2>/dev/null | sed -n 's/.*token: //p' || true)}"
 fi
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+if ! has_provider_auth; then
   echo ""
-  echo "ERROR: No authentication configured."
+  echo "ERROR: No provider API key configured."
   echo ""
-  echo "  Option 1: Set ANTHROPIC_API_KEY (from console.anthropic.com/settings/keys)"
-  echo "  Option 2: Set CLAUDE_CODE_OAUTH_TOKEN (run: claude setup-token)"
-  echo "  Option 3: Add either to .env in this directory"
+  echo "  Set one matching your MODEL (default opus → anthropic):"
+  echo "    ANTHROPIC_API_KEY        console.anthropic.com/settings/keys"
+  echo "    CLAUDE_CODE_OAUTH_TOKEN  run: claude setup-token"
+  echo "    OPENAI_API_KEY           MODEL=openai/...   slugs"
+  echo "    GEMINI_API_KEY           MODEL=google/...   slugs"
+  echo "    OPENROUTER_API_KEY       MODEL=openrouter/.../...  slugs"
+  echo "  …in your shell or in .env in this directory."
   exit 1
 fi
 
 if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "Auth:      API key"
+  echo "Auth:      anthropic API key"
+elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  echo "Auth:      anthropic OAuth token"
+elif [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+  echo "Auth:      OpenRouter API key"
+elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  echo "Auth:      OpenAI API key"
 else
-  echo "Auth:      OAuth token"
+  echo "Auth:      Gemini API key"
 fi
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
@@ -212,12 +249,11 @@ echo "Mode: ${MODE} | Model: ${MODEL}${MAX_TOKENS:+ | MaxTokens: ${MAX_TOKENS}}"
 echo "---"
 
 AUTH_ARGS=()
-if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-  AUTH_ARGS+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
-fi
-if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-  AUTH_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}")
-fi
+for var in "${PROVIDER_KEY_VARS[@]}" "${PROVIDER_EXTRA_VARS[@]}"; do
+  if [[ -n "${!var:-}" ]]; then
+    AUTH_ARGS+=(-e "${var}=${!var}")
+  fi
+done
 
 docker run --rm \
   "${AUTH_ARGS[@]}" \

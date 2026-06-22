@@ -15,6 +15,7 @@
 
 import {
   MODEL_MANIFEST,
+  OPEN_CATALOG_PROVIDERS,
   modelByAlias,
   modelBySlug,
 } from './models.js';
@@ -118,6 +119,13 @@ export function resolveModel(
     const id = ref.slice(slashIndex + 1);
     const found = provider && id ? lookup.find(provider, id) : undefined;
     resolved = found ? toSlug(found) : undefined;
+    // Open-catalog providers (OpenRouter) front a large, dynamic vendor catalog
+    // that can't be enumerated in the manifest. Accept any well-formed slug
+    // verbatim — gantry/the gateway validates the model id. These carry no
+    // manifest rates, so usage bills at 0 (see OPEN_CATALOG_PROVIDERS).
+    if (!resolved && provider && id && OPEN_CATALOG_PROVIDERS.has(provider)) {
+      resolved = `${provider}/${id}`;
+    }
   } else {
     // Bare id, no provider: accept only an unambiguous single match.
     const matches = lookup.getAll().filter((m) => m.id === ref);

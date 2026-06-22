@@ -28,10 +28,12 @@ export type WrilyConfig = {
 export type RuntimeEnv = {
   // Provider API keys, mirrored from the environment as parsed-env state.
   // gantry reads provider keys from its process env at run time; these back
-  // the auth gate and diagnostics. Narrowed to wrily's three providers.
+  // the auth gate and diagnostics. Covers wrily's hosted providers plus the
+  // OpenRouter gateway.
   anthropicApiKey?: string | null;
   openaiApiKey?: string | null;
   geminiApiKey?: string | null;
+  openrouterApiKey?: string | null;
   githubToken: string;
   prNumber: number;
   githubRepository: string;

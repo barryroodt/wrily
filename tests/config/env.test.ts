@@ -32,7 +32,7 @@ describe('parseEnv', () => {
   });
 
   it('accepts any retained provider key as the sole auth source', () => {
-    for (const key of ['OPENAI_API_KEY', 'GEMINI_API_KEY']) {
+    for (const key of ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY']) {
       const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [key]: 'k-value' });
       expect(env.anthropicApiKey).toBeNull();
       expect(env.prNumber).toBe(42);
@@ -50,6 +50,12 @@ describe('parseEnv', () => {
     expect(env.anthropicApiKey).toBe('sk-ant-xxx');
     expect(env.openaiApiKey).toBe('sk-openai');
     expect(env.geminiApiKey).toBeNull();
+  });
+
+  it('mirrors OPENROUTER_API_KEY and accepts it as the sole auth source', () => {
+    const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, OPENROUTER_API_KEY: 'sk-or-xxx' });
+    expect(env.openrouterApiKey).toBe('sk-or-xxx');
+    expect(env.anthropicApiKey).toBeNull();
   });
 
   it('throws when no recognized provider key is configured', () => {
