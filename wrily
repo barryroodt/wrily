@@ -74,7 +74,7 @@ for arg in "$@"; do
       echo "  MODE=team        Force agent-team mode (default: auto)"
       echo "  MODE=single      Force single-reviewer mode"
       echo "  MODEL=sonnet     Use a different model (default: opus)"
-      echo "  MAX_BUDGET=10    Set budget cap (default: \$5 single / \$15 team)"
+      echo "  MAX_TOKENS=2000000  Token budget cap (default: 2M single / 8M team)"
       echo ""
       echo "Authentication (set one, or add to .env):"
       echo "  ANTHROPIC_API_KEY          API key from console.anthropic.com"
@@ -192,14 +192,14 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "Building Docker image..."
-docker build -t wrily "${SCRIPT_DIR}" --quiet
+docker build -t wrily "${SCRIPT_DIR}" --quiet --build-arg GANTRY_VERSION="$(cat "${SCRIPT_DIR}/.gantry-version")"
 
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 MODE="${MODE:-auto}"
 MODEL="${MODEL:-opus}"
-MAX_BUDGET="${MAX_BUDGET:-}"
+MAX_TOKENS="${MAX_TOKENS:-}"
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo ""
@@ -208,7 +208,7 @@ else
   echo ""
   echo "Running review (posting to GitHub)..."
 fi
-echo "Mode: ${MODE} | Model: ${MODEL}${MAX_BUDGET:+ | Budget: \$${MAX_BUDGET}}"
+echo "Mode: ${MODE} | Model: ${MODEL}${MAX_TOKENS:+ | MaxTokens: ${MAX_TOKENS}}"
 echo "---"
 
 AUTH_ARGS=()
@@ -231,12 +231,11 @@ docker run --rm \
   -e DRY_RUN="$DRY_RUN" \
   -e MODE="$MODE" \
   -e MODEL="$MODEL" \
-  -e MAX_BUDGET="$MAX_BUDGET" \
+  -e MAX_TOKENS="$MAX_TOKENS" \
   -e SCOPE_OVERRIDE="${SCOPE_OVERRIDE:-}" \
   -e REPLY_FEEDBACK="${REPLY_FEEDBACK:-}" \
   -e PR_AUTHOR_LOGIN="$PR_AUTHOR_LOGIN" \
   -e WRILY_TRIGGER_SOURCE=local_cli \
   -e SUPABASE_URL="${SUPABASE_URL:-}" \
   -e SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}" \
-  -e CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
   wrily

@@ -24,7 +24,7 @@ integration('persistence integration', () => {
       model: 'opus',
       review_mode: 'single',
       scope: 'full',
-      max_budget_usd: 5,
+      max_tokens: 5,
       status: 'success',
       duration_ms: 1000,
       findings_posted: 1,

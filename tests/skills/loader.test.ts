@@ -2,37 +2,39 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bridgeSkills, removeSkill } from '../../src/skills/loader.js';
+import { stageSkills, removeSkill } from '../../src/skills/loader.js';
 
-describe('bridgeSkills', () => {
-  let src: string;
-  let dest: string;
+describe('stageSkills', () => {
+  let root: string;
+  let srcA: string;
+  let srcB: string;
+  let staging: string;
 
   beforeEach(() => {
-    const root = mkdtempSync(join(tmpdir(), 'skills-'));
-    src = join(root, 'src');
-    dest = join(root, 'dest');
-    mkdirSync(src);
-    mkdirSync(join(src, 'caveman-review'));
-    writeFileSync(join(src, 'caveman-review', 'SKILL.md'), '# caveman');
+    root = mkdtempSync(join(tmpdir(), 'skills-'));
+    srcA = join(root, 'src-a', 'caveman-review');
+    srcB = join(root, 'src-b', 'code-review');
+    mkdirSync(srcA, { recursive: true });
+    mkdirSync(srcB, { recursive: true });
+    writeFileSync(join(srcA, 'SKILL.md'), '# caveman');
+    writeFileSync(join(srcB, 'SKILL.md'), '# code-review');
+    staging = join(root, 'staging');
   });
 
   afterEach(() => {
-    rmSync(join(src, '..'), { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   });
 
-  it('copies skills from src to dest', async () => {
-    await bridgeSkills(src, dest);
-    expect(existsSync(join(dest, 'caveman-review', 'SKILL.md'))).toBe(true);
-    expect(readFileSync(join(dest, 'caveman-review', 'SKILL.md'), 'utf8')).toBe('# caveman');
+  it('copies each source skill dir into the staging dir by basename', async () => {
+    await stageSkills([srcA, srcB], staging);
+    expect(readFileSync(join(staging, 'caveman-review', 'SKILL.md'), 'utf8')).toBe('# caveman');
+    expect(readFileSync(join(staging, 'code-review', 'SKILL.md'), 'utf8')).toBe('# code-review');
   });
 
-  it('preserves existing dest files (cp -n equivalent)', async () => {
-    mkdirSync(dest);
-    mkdirSync(join(dest, 'caveman-review'));
-    writeFileSync(join(dest, 'caveman-review', 'SKILL.md'), '# preserved');
-    await bridgeSkills(src, dest);
-    expect(readFileSync(join(dest, 'caveman-review', 'SKILL.md'), 'utf8')).toBe('# preserved');
+  it('creates the staging dir if it does not exist', async () => {
+    expect(existsSync(staging)).toBe(false);
+    await stageSkills([srcA], staging);
+    expect(existsSync(join(staging, 'caveman-review', 'SKILL.md'))).toBe(true);
   });
 });
 

@@ -1,0 +1,2 @@
+{"event":"start","ts":1781688614000,"schema_version":"1.1","model":"dummy","provider":"local","mode":"single","workdir":"/private/tmp"}
+{"event":"result","ts":1781688614304,"exit":"timeout","total_input":0,"total_output":0,"total_cache_read":0,"total_cache_write":0,"duration_ms":305}

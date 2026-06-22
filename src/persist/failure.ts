@@ -50,7 +50,7 @@ export async function persistFailureRun(
     model: cfg.model,
     review_mode: 'single',
     scope: 'full',
-    max_budget_usd: cfg.max_budget_usd ?? null,
+    max_tokens: cfg.max_tokens ?? null,
     status,
     duration_ms: 0,
     findings_posted: null,

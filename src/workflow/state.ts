@@ -26,8 +26,10 @@ export type WorkflowState = {
    */
   reviewRoundIndex?: number;
 
-  // After loadSkills
+  // After stageSkills
   loadedSkills?: string[];
+  /** Per-run mkdtemp staging dir holding the invariant + user skills; gantry's --skills-dir. */
+  skillsStagingDir?: string;
 
   // After fetchDigest
   priorFeedback?: PriorFeedbackDigest | null;
@@ -36,6 +38,8 @@ export type WorkflowState = {
 
   // After renderPrompt
   renderedPrompt?: string;
+  /** Per-run rendered unify-phase prompt (team mode); gantry's --unify-file. Set by renderPromptStep (D2). */
+  unifyPromptPath?: string;
 
   // After agentCall
   agentResults?: AgentResult[];

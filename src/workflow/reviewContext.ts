@@ -1,5 +1,5 @@
 import type { WorkflowState } from './state.js';
-import type { PromptContext, UnifyPromptContext } from '../prompt/render.js';
+import type { PromptContext, UnifyFileContext } from '../prompt/render.js';
 import {
   styleInstruction,
   sensitivityInstruction,
@@ -71,11 +71,18 @@ export function buildReviewPromptContext(state: WorkflowState): PromptContext {
   };
 }
 
-/** Build the team unify prompt context from the consolidated reviewer reports. */
-export function buildUnifyPromptContext(
-  state: WorkflowState,
-  reviewerReports: string,
-  reviewerCount: number,
-): UnifyPromptContext {
-  return { ...commonInstructions(state), reviewerReports, reviewerCount };
+/**
+ * Build the team-mode unify-FILE context (gantry's --unify-file). No reviewer
+ * reports/count — gantry feeds the subagent reports into the unify phase
+ * itself. Carries the shared instruction strings plus the prior-feedback
+ * (digest) instructions so the unify phase can emit suppress/reply/resolve.
+ */
+export function buildUnifyFileContext(state: WorkflowState): UnifyFileContext {
+  return {
+    ...commonInstructions(state),
+    priorFeedbackInstruction: priorFeedbackInstruction(
+      state.cfg.reply_feedback,
+      state.priorFeedbackDigestPath ?? '',
+    ),
+  };
 }

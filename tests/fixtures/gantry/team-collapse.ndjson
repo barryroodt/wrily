@@ -1,0 +1,16 @@
+{"event":"start","ts":1781688850573,"schema_version":"1.1","model":"dummy","provider":"local","mode":"team","workdir":"/private/tmp/gantry-cap/wd"}
+{"event":"agent_turn","ts":1781688850586,"role":"coordinator","turn":0,"input_tokens":200,"output_tokens":60,"cache_read":0,"cache_write":0,"duration_ms":2}
+{"event":"agent_turn","ts":1781688850586,"role":"coordinator","turn":1,"input_tokens":200,"output_tokens":60,"cache_read":0,"cache_write":0,"duration_ms":0}
+{"event":"subagent_spawn","ts":1781688850586,"name":"correctness","scope":"full"}
+{"event":"subagent_spawn","ts":1781688850586,"name":"spec-compliance","scope":"full"}
+{"event":"subagent_spawn","ts":1781688850586,"name":"contracts","scope":"full"}
+{"event":"subagent_failed","ts":1781688850587,"name":"spec-compliance","reason":"budget"}
+{"event":"subagent_done","ts":1781688850587,"name":"spec-compliance","turns":0,"input_tokens":9000,"output_tokens":9000,"cache_read":0,"cache_write":0,"duration_ms":0}
+{"event":"subagent_failed","ts":1781688850587,"name":"correctness","reason":"budget"}
+{"event":"subagent_done","ts":1781688850587,"name":"correctness","turns":0,"input_tokens":9000,"output_tokens":9000,"cache_read":0,"cache_write":0,"duration_ms":0}
+{"event":"budget_exceeded","ts":1781688850587,"limit":40000,"total":54520}
+{"event":"subagent_failed","ts":1781688850587,"name":"contracts","reason":"budget"}
+{"event":"subagent_done","ts":1781688850587,"name":"contracts","turns":0,"input_tokens":9000,"output_tokens":9000,"cache_read":0,"cache_write":0,"duration_ms":0}
+{"event":"error","ts":1781688850587,"kind":"team_collapse","message":"all subagents crashed or produced no output","recoverable":false}
+{"event":"changes","ts":1781688850588,"files":[]}
+{"event":"result","ts":1781688850588,"exit":"error","total_input":27400,"total_output":27120,"total_cache_read":0,"total_cache_write":0,"duration_ms":17}

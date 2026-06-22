@@ -32,7 +32,7 @@ function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
     modeOverride: '',
     replyFeedbackOverride: '',
     modelOverride: '',
-    maxBudgetOverride: null,
+    allowUnknownModel: false,
     dryRun: false,
     prAuthorLogin: 'human-dev',
     triggerSource: 'push',

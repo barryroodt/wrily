@@ -1,18 +1,19 @@
 import { createStep } from '@mastra/core/workflows';
-import { writeFileSync, mkdtempSync, existsSync, readFileSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
-import { join } from 'node:path';
+import { writeFileSync, mkdtempSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import type { WorkflowState } from './state.js';
 import type { ReviewType } from '../config/types.js';
-import { applyEnvOverrides, parseWrilyYml } from '../config/wrilyYml.js';
+import { applyEnvOverrides, parseWrilyYml, defaultMaxTokens } from '../config/wrilyYml.js';
 import { fetchPriorFeedbackDigest } from '../post/digest.js';
 import { extractFindings } from '../post/extract.js';
 import { routeFindings } from '../post/route.js';
-import { renderReviewPrompt } from '../prompt/render.js';
+import { renderReviewPrompt, renderUnifyFile } from '../prompt/render.js';
 import { buildCloneUrl } from '../git/clone.js';
-import { bridgeSkills } from '../skills/loader.js';
+import { stageSkills } from '../skills/loader.js';
 import { isValidSharedSkillName } from '../skills/names.js';
 import { computeDiffRange, countTeamThresholdScope, applyIgnorePatterns, computeDiffFiles } from '../git/diff.js';
 import { resolveAddressedThreads } from '../post/resolveThreads.js';
@@ -21,10 +22,11 @@ import { renderReviewBody } from '../post/body.js';
 import type { AgentRunner, AgentResult } from '../agent/runner.js';
 import type { Octokit } from '@octokit/rest';
 import { isPersistenceEnabled, recordReviewRun } from '../persist/supabase.js';
-import type { ReviewRunRecord, SubagentRecord } from '../persist/types.js';
 import { markUsagePersisted } from '../persist/state.js';
-import { buildReviewPromptContext } from './reviewContext.js';
-import { runTeamReview } from './teamReview.js';
+import { buildReviewPromptContext, buildUnifyFileContext } from './reviewContext.js';
+import { ratesForSlug } from '../agent/models.js';
+import { buildUsageRecords, type UsageRunBase } from '../persist/usage.js';
+import { DEFAULT_TIMEOUT_MS } from '../agent/gantry.js';
 
 export const workflowStateSchema = z.custom<WorkflowState>(() => true);
 
@@ -35,6 +37,25 @@ export type WorkflowDeps = {
 };
 
 const GIT_TIMEOUT_MS = 120_000;
+
+/**
+ * Wrily's four invariant review-guard skills. The gantry profile injects this
+ * exact set; they are copied from wrily's own install tree and a user skill may
+ * never shadow one of these names.
+ */
+const INVARIANT_SKILLS = ['agent-team-review', 'code-review', 'confidence-rating', 'caveman-review'] as const;
+
+/**
+ * Resolve wrily's in-tree `skills/` directory (the trusted invariant set).
+ * Prod sets `WRILY_SKILLS_DIR` (the Docker image copies `skills/` there);
+ * locally it sits two levels up from this module (`src/workflow/` → repo root).
+ */
+function wrilyInstallSkillsDir(): string {
+  const override = process.env.WRILY_SKILLS_DIR;
+  return override && override.length > 0
+    ? override
+    : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'skills');
+}
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -236,38 +257,67 @@ export function makeSteps(deps: WorkflowDeps) {
     },
   });
 
-  const bridgeSkillsStep = createStep({
-    id: 'bridgeSkills',
+  const stageSkillsStep = createStep({
+    id: 'stageSkills',
     inputSchema: workflowStateSchema,
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const wanted = state.cfg.shared_skills ?? [];
-      if (!state.sharedPath || wanted.length === 0) {
-        console.log('[bridgeSkills] no shared skills to bridge');
-        return { ...state, loadedSkills: [] };
-      }
-      const destRoot = join(homedir(), '.claude', 'skills');
-      const loaded: string[] = [];
-      for (const name of wanted) {
-        if (!isValidSharedSkillName(name)) {
-          console.warn(`[bridgeSkills] invalid shared skill name "${name}" — skipping`);
-          continue;
-        }
-        const src = join(state.sharedPath, 'skills', name);
+      // Fresh per-run staging dir. The PR checkout is hostile: trusted skill
+      // content is assembled here and handed to gantry via --skills-dir; nothing
+      // is ever written into or resolved from the checkout's .claude/.
+      const stagingDir = mkdtempSync(join(tmpdir(), 'wrily-skills-'));
+
+      // 1. Invariant review guards from wrily's own install tree — the set the
+      //    gantry profile injects.
+      const invariantRoot = wrilyInstallSkillsDir();
+      const sources: string[] = [];
+      for (const name of INVARIANT_SKILLS) {
+        const src = join(invariantRoot, name);
         if (!existsSync(src)) {
-          console.warn(`[bridgeSkills] source missing for "${name}" at ${src} — skipping`);
+          console.warn(`[stageSkills] invariant skill "${name}" missing at ${src} — skipping`);
           continue;
         }
-        const dest = join(destRoot, name);
-        try {
-          await bridgeSkills(src, dest);
-          loaded.push(name);
-        } catch (err) {
-          console.warn(`[bridgeSkills] failed to copy "${name}": ${(err as Error).message}`);
-        }
+        sources.push(src);
       }
-      return { ...state, loadedSkills: loaded };
+
+      // 2. Name-validated user skills from the shared-repo clone, appended after
+      //    the invariant set. A user skill whose name collides with an invariant
+      //    skill is rejected (warn + skip): .wrily.yml cannot shadow the guards.
+      const invariantNames = new Set<string>(INVARIANT_SKILLS);
+      const wanted = state.cfg.shared_skills ?? [];
+      const loaded: string[] = [];
+      if (state.sharedPath && wanted.length > 0) {
+        for (const name of wanted) {
+          if (invariantNames.has(name)) {
+            console.warn(`[stageSkills] user skill "${name}" collides with an invariant skill — rejecting`);
+            continue;
+          }
+          if (!isValidSharedSkillName(name)) {
+            console.warn(`[stageSkills] invalid shared skill name "${name}" — skipping`);
+            continue;
+          }
+          const src = join(state.sharedPath, 'skills', name);
+          if (!existsSync(src)) {
+            console.warn(`[stageSkills] source missing for "${name}" at ${src} — skipping`);
+            continue;
+          }
+          sources.push(src);
+          loaded.push(name);
+        }
+      } else {
+        console.log('[stageSkills] no user skills to stage');
+      }
+
+      try {
+        await stageSkills(sources, stagingDir);
+      } catch (err) {
+        console.warn(`[stageSkills] failed to stage skills: ${(err as Error).message}`);
+      }
+
+      // loadedSkills carries USER skills only — they ride --inject-skill; the
+      // invariant set is injected by the gantry profile itself.
+      return { ...state, skillsStagingDir: stagingDir, loadedSkills: loaded };
     },
   });
 
@@ -291,8 +341,13 @@ export function makeSteps(deps: WorkflowDeps) {
           },
           deps.graphqlClient,
         );
-        const tmpDir = mkdtempSync(join(tmpdir(), 'wrily-'));
-        const digestPath = join(tmpDir, 'prior-feedback.json');
+        // The digest must be readable by gantry's workdir-confined tools, so it
+        // is the one artifact written into the checkout — under <repo>/.wrily/
+        // (the OS tmpdir location used before is unreachable by read_file).
+        const workdir = state.repoPath ?? mkdtempSync(join(tmpdir(), 'wrily-'));
+        const wrilyDir = join(workdir, '.wrily');
+        mkdirSync(wrilyDir, { recursive: true });
+        const digestPath = join(wrilyDir, 'prior-feedback.json');
         writeFileSync(digestPath, JSON.stringify(priorFeedback, null, 2), 'utf8');
         return { ...state, priorFeedback, digestFetchFailed: false, priorFeedbackDigestPath: digestPath };
       } catch (err) {
@@ -377,7 +432,18 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      return { ...state, renderedPrompt: renderReviewPrompt(buildReviewPromptContext(state)) };
+      const renderedPrompt = renderReviewPrompt(buildReviewPromptContext(state));
+      // Team mode: render the per-run unify prompt into a fresh mkdtemp dir
+      // OUTSIDE the hostile PR checkout and hand its path to gantry via
+      // --unify-file. Single mode leaves unifyPromptPath undefined — the task
+      // prompt itself carries the full output contract.
+      let unifyPromptPath: string | undefined;
+      if (state.reviewMode === 'team') {
+        const unifyDir = mkdtempSync(join(tmpdir(), 'wrily-unify-'));
+        unifyPromptPath = join(unifyDir, 'unify.md');
+        writeFileSync(unifyPromptPath, renderUnifyFile(buildUnifyFileContext(state)), 'utf8');
+      }
+      return { ...state, renderedPrompt, unifyPromptPath };
     },
   });
 
@@ -387,18 +453,24 @@ export function makeSteps(deps: WorkflowDeps) {
     outputSchema: workflowStateSchema,
     execute: async ({ inputData }) => {
       const state = inputData;
-      const agentResults =
-        state.reviewMode === 'team'
-          ? await runTeamReview(deps.agentRunner, state)
-          : [
-              await deps.agentRunner.run({
-                prompt: state.renderedPrompt!,
-                model: state.cfg.model,
-                maxBudgetUsd: state.cfg.max_budget_usd ?? 5,
-                workingDir: state.repoPath ?? '/tmp/repo',
-                env: process.env,
-              }),
-            ];
+      // resolveReviewStep narrows reviewMode to single|team; map auto defensively.
+      const mode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
+      const maxTokens = state.cfg.max_tokens ?? defaultMaxTokens(mode);
+      // Post-cutover the team lives inside gantry: one run, one result. Per-role
+      // telemetry rides result.events; persistUsageStep unpacks it.
+      const result = await deps.agentRunner.run({
+        prompt: state.renderedPrompt!,
+        model: state.cfg.model,
+        mode,
+        workingDir: state.repoPath!,
+        maxTokens,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        skillsDir: state.skillsStagingDir,
+        extraSkills: state.loadedSkills,
+        unifyPromptPath: state.unifyPromptPath,
+        env: process.env,
+      });
+      const agentResults = [result];
       writeDebugOutput(agentResults);
       return { ...state, agentResults };
     },
@@ -576,55 +648,42 @@ export function makeSteps(deps: WorkflowDeps) {
       try {
         const status = deriveRunStatus(state);
         const agentResults = state.agentResults ?? [];
-        const totalDuration = agentResults.reduce((sum, r) => sum + r.durationMs, 0);
-        const totals = agentResults.reduce(
-          (acc, r) => {
-            const u = r.tokenUsage;
-            if (!u) return acc;
-            acc.input += u.inputTokens;
-            acc.output += u.outputTokens;
-            acc.cacheRead += u.cacheReadTokens ?? 0;
-            acc.cacheWrite += u.cacheWriteTokens ?? 0;
-            acc.cost += u.costUsd ?? 0;
-            return acc;
-          },
-          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
-        );
+        const result = agentResults[0];
+        const events = result?.events;
 
-        const run: ReviewRunRecord = {
+        // gantry runs one model per run; cost attribution keys on its slug.
+        const runSlug = result?.model ?? state.cfg.model;
+        const rates = ratesForSlug(runSlug);
+        const reviewMode: 'single' | 'team' = state.reviewMode === 'team' ? 'team' : 'single';
+
+        // Run-record fields fixed before reconciliation (everything except the
+        // model slug and the token/duration/cost totals buildUsageRecords fills).
+        const base: UsageRunBase = {
           github_repo: state.env.githubRepository,
           pr_number: state.env.prNumber,
           commit_sha: state.env.commitSha,
           trigger_source: collapseTriggerSource(state.env.triggerSource),
           review_round: state.reviewRoundIndex ?? state.env.reviewRoundIndex ?? 0,
-          model: agentResults[0]?.model ?? state.cfg.model,
-          review_mode: state.reviewMode === 'team' ? 'team' : 'single',
+          review_mode: reviewMode,
           scope: state.reviewType === 'delta' ? 'delta' : 'full',
-          max_budget_usd: state.cfg.max_budget_usd ?? null,
+          max_tokens: state.cfg.max_tokens ?? defaultMaxTokens(reviewMode),
           status,
-          duration_ms: totalDuration,
           findings_posted: status === 'success' ? (state.findings ? state.findings.length : 0) : null,
-          input_tokens: totals.input,
-          output_tokens: totals.output,
-          cache_read_tokens: totals.cacheRead,
-          cache_write_tokens: totals.cacheWrite,
-          cost_usd: totals.cost,
         };
 
-        const subagents: SubagentRecord[] = agentResults.map((r, idx) => ({
-          role: state.reviewMode === 'team' ? `team-${idx}` : 'single',
-          model: r.model ?? state.cfg.model,
-          duration_ms: r.durationMs,
-          input_tokens: r.tokenUsage?.inputTokens ?? 0,
-          output_tokens: r.tokenUsage?.outputTokens ?? 0,
-          cache_read_tokens: r.tokenUsage?.cacheReadTokens ?? 0,
-          cache_write_tokens: r.tokenUsage?.cacheWriteTokens ?? 0,
-          cost_usd: r.tokenUsage?.costUsd ?? 0,
-        }));
+        const { run, subagents } = buildUsageRecords(events, {
+          runSlug,
+          rates,
+          base,
+          reviewMode,
+          resultDurationMs: result?.durationMs ?? 0,
+          results: agentResults,
+          defaultModel: state.cfg.model,
+        });
 
         await recordReviewRun(state.env, run, subagents);
-        // Mark so main.ts's failure-path persistence doesn't double-write
-        // if a later step (postToGitHub, resolveAddressedThreads) throws.
+        // Mark so main.ts's failure-path persistence doesn't double-write if a
+        // later step (postToGitHub, resolveAddressedThreads) throws.
         markUsagePersisted();
       } catch (err) {
         console.warn(`[persistUsage] failed: ${(err as Error).message}`);
@@ -637,7 +696,7 @@ export function makeSteps(deps: WorkflowDeps) {
     cloneRepoStep,
     loadConfigStep,
     cloneSharedStep,
-    bridgeSkillsStep,
+    stageSkillsStep,
     fetchDigestStep,
     resolveReviewStep,
     renderPromptStep,

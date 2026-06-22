@@ -1,0 +1,105 @@
+name: Gantry version bump
+
+# Weekly check for a newer gantry release. Compares gantry's latest GitHub
+# release tag against the pin in .gantry-version and, when they drift, opens a
+# PR bumping the pin (with a one-line release-note summary). A no-op when the
+# pin already matches the latest release.
+#
+# Auth is the default GITHUB_TOKEN via the gh CLI. NOTE: opening the PR requires
+# the repo/org setting "Allow GitHub Actions to create and approve pull
+# requests" (Settings -> Actions -> General); without it `gh pr create` 403s.
+
+on:
+  schedule:
+    # Mondays at 07:00 UTC.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gantry-version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Open gantry bump PR on release drift
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GANTRY_REPO: barryroodt/gantry
+          BASE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          pinned="$(tr -d '[:space:]' < .gantry-version)"
+          if [ -z "$pinned" ]; then
+            echo "::error::.gantry-version is empty"
+            exit 1
+          fi
+
+          # Single snapshot of the latest release: tag + body + url together.
+          release_json="$(gh release view -R "$GANTRY_REPO" --json tagName,body,url)"
+          latest="$(printf '%s' "$release_json" | jq -r '.tagName')"
+          url="$(printf '%s' "$release_json" | jq -r '.url')"
+
+          echo "pinned=$pinned latest=$latest"
+
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::could not resolve latest gantry release tag"
+            exit 1
+          fi
+
+          if [ "$pinned" = "$latest" ]; then
+            echo "Already at the latest gantry release ($pinned); nothing to do."
+            exit 0
+          fi
+
+          branch="chore/bump-gantry-${latest}"
+
+          # Idempotent: if a bump branch for this tag already exists, assume the
+          # PR is open and stop.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists; bump PR presumed open. Nothing to do."
+            exit 0
+          fi
+
+          # One-line release-note summary: first non-blank body line, else URL.
+          body="$(printf '%s' "$release_json" | jq -r '.body // ""')"
+          summary="$(printf '%s\n' "$body" | grep -m1 -v '^[[:space:]]*$' || true)"
+          summary="${summary%$'\r'}"
+          [ -n "$summary" ] || summary="See release notes: $url"
+
+          printf '%s\n' "$latest" > .gantry-version
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add .gantry-version
+          git commit -m "chore: bump gantry to ${latest}"
+          git push --set-upstream origin "$branch"
+
+          body_file="$RUNNER_TEMP/pr-body.md"
+          {
+            echo "Automated bump of the pinned gantry release."
+            echo
+            echo "- Previous: \`${pinned}\`"
+            echo "- Latest: \`${latest}\`"
+            echo
+            echo "${summary}"
+            echo
+            echo "Release: ${url}"
+          } > "$body_file"
+
+          gh pr create \
+            --title "chore: bump gantry to ${latest}" \
+            --body-file "$body_file" \
+            --base "$BASE_REF" \
+            --head "$branch"

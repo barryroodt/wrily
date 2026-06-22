@@ -43,7 +43,7 @@ function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
     scopeOverride: '',
     modeOverride: '',
     modelOverride: '',
-    maxBudgetOverride: null,
+    allowUnknownModel: false,
     dryRun: true,
     prAuthorLogin: 'human-dev',
     triggerSource: 'push',
@@ -59,7 +59,7 @@ function baseCfg(overrides: Partial<WrilyConfig> = {}): WrilyConfig {
     mode: 'single',
     team_threshold: 5,
     team_threshold_unit: 'files',
-    max_budget_usd: null,
+    max_tokens: null,
     ignore: [],
     shared_skills: [],
     request_changes: false,
@@ -95,30 +95,29 @@ async function runWorkflow(
 }
 
 describe('workflow / budget defaults and request_changes', () => {
-  it('applies the default budget cap for single mode when max_budget_usd is unset', async () => {
+  it('applies the default single-mode token budget when max_tokens is unset', async () => {
     const { agentRunner } = await runWorkflow({
       env: baseEnv(),
-      cfg: baseCfg({ mode: 'single', max_budget_usd: null }),
+      cfg: baseCfg({ mode: 'single', max_tokens: null }),
       repoPath: process.cwd(),
       diffFiles: ['src/x.ts'],
     });
 
-    expect(agentRunner.calls[0]?.maxBudgetUsd).toBe(5);
+    expect(agentRunner.calls[0]?.maxTokens).toBe(2_000_000);
   });
 
-  it('splits the default team budget across the reviewer + unify calls', async () => {
+  it('applies the default team token budget in a single gantry call', async () => {
     const { agentRunner } = await runWorkflow({
       env: baseEnv(),
-      cfg: baseCfg({ mode: 'team', max_budget_usd: null }),
+      cfg: baseCfg({ mode: 'team', max_tokens: null }),
       repoPath: process.cwd(),
       diffFiles: ['src/x.ts'],
     });
 
-    // Team mode fans out N reviewers + 1 unify; the default $15 ceiling is the
-    // total, split evenly so the summed per-call caps stay within budget.
-    expect(agentRunner.calls.length).toBeGreaterThan(1);
-    const total = agentRunner.calls.reduce((sum, c) => sum + (c.maxBudgetUsd ?? 0), 0);
-    expect(total).toBeCloseTo(15, 5);
+    // Post-cutover the team runs inside ONE gantry subprocess: a single run.run
+    // call carries the whole team token budget (no per-reviewer USD split).
+    expect(agentRunner.calls.length).toBe(1);
+    expect(agentRunner.calls[0]?.maxTokens).toBe(8_000_000);
   });
 
   it('posts REQUEST_CHANGES for critical findings when request_changes is enabled', async () => {

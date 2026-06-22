@@ -36,7 +36,7 @@ function baseEnv(overrides: Partial<RuntimeEnv> = {}): RuntimeEnv {
     scopeOverride: '',
     modeOverride: '',
     modelOverride: '',
-    maxBudgetOverride: null,
+    allowUnknownModel: false,
     dryRun: true,
     prAuthorLogin: 'human-dev',
     triggerSource: 'push',
@@ -51,7 +51,7 @@ const defaultCfg: WrilyConfig = {
   mode: 'single',
   team_threshold: 5,
   team_threshold_unit: 'files',
-  max_budget_usd: null,
+  max_tokens: null,
   ignore: [],
   shared_skills: [],
   request_changes: false,
@@ -76,7 +76,7 @@ describe('workflow / config load', () => {
         'model: sonnet',
         'mode: team',
         'team_threshold: 99',
-        'max_budget_usd: 12',
+        'max_tokens: 1200000',
         'style: verbose',
         'sensitivity: critical',
         'reply_feedback: off',
@@ -119,7 +119,7 @@ describe('workflow / config load', () => {
     const final = result.result as unknown as WorkflowState;
     expect(final.cfg.model).toBe('sonnet');
     expect(final.cfg.mode).toBe('team');
-    expect(final.cfg.max_budget_usd).toBe(12);
+    expect(final.cfg.max_tokens).toBe(1200000);
     expect(final.cfg.style).toBe('verbose');
     expect(final.cfg.sensitivity).toBe('critical');
     expect(final.cfg.request_changes).toBe(true);

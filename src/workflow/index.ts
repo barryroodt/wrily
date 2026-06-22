@@ -13,7 +13,7 @@ export function buildReviewWorkflow(deps: WorkflowDeps) {
     .then(steps.cloneRepoStep)
     .then(steps.loadConfigStep)
     .then(steps.cloneSharedStep)
-    .then(steps.bridgeSkillsStep)
+    .then(steps.stageSkillsStep)
     .then(steps.fetchDigestStep)
     .then(steps.resolveReviewStep)
     .then(steps.renderPromptStep)

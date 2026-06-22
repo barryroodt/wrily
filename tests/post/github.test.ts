@@ -225,7 +225,7 @@ describe('postFailureComment', () => {
     });
     const body = client.rest.pulls.createReview.mock.calls[0]?.[0].body;
     expect(body).toMatch(/budget exceeded/i);
-    expect(body).toMatch(/max_budget_usd/);
+    expect(body).toMatch(/max_tokens/);
     expect(body).toMatch(/<!-- auto-reviewer: failure=budget/);
   });
 

@@ -1,0 +1,26 @@
+# Forked from gantry@d9e885d; owned by wrily; divergence allowed.
+#
+# Code-review profile (ADR-0004/0005). Team mode is the primary form: the
+# harness drives orchestration and consults the model only at `compose` and
+# `unify`. Also runs in single mode (`--mode single`), which uses `system`.
+mode = "team"
+system = "system.md"
+subagent_system = "subagent.md"
+compose = "compose.md"
+unify = "unify.md"
+tools = [
+    "read_file",
+    "list_files",
+    "find_files",
+    "git_diff",
+    "ast_grep",
+    "shell",
+    "skill_load",
+]
+inject_skills = ["agent-team-review", "code-review", "confidence-rating", "caveman-review"]
+# Divergence: pi reviewers had a grep tool + unrestricted bash; reviewers grep
+# constantly, so wrily allows grep and rg on top of gantry's git/cat/ls/find.
+shell_allow = ["git", "cat", "ls", "find", "grep", "rg"]
+# Divergence: run against a copy-on-write shadow of the (hostile) checkout so
+# allowlisted-but-mutating commands cannot corrupt the real tree mid-review.
+isolate = true

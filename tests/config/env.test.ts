@@ -31,39 +31,29 @@ describe('parseEnv', () => {
     expect(env.wrilyBotLogin).toBe('custom-bot');
   });
 
-  it('accepts any recognized provider key as the sole auth source', () => {
-    for (const key of [
-      'OPENAI_API_KEY',
-      'GEMINI_API_KEY',
-      'GOOGLE_CLOUD_API_KEY',
-      'MISTRAL_API_KEY',
-      'AZURE_OPENAI_API_KEY',
-      'CLOUDFLARE_API_KEY',
-    ]) {
+  it('accepts any retained provider key as the sole auth source', () => {
+    for (const key of ['OPENAI_API_KEY', 'GEMINI_API_KEY']) {
       const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [key]: 'k-value' });
       expect(env.anthropicApiKey).toBeNull();
       expect(env.prNumber).toBe(42);
     }
   });
 
-  it('exposes provider keys when present and nulls absent ones', () => {
-    const env = parseEnv({ ...minimal, OPENAI_API_KEY: 'sk-openai', GEMINI_API_KEY: 'g-key' });
+  it('accepts CLAUDE_CODE_OAUTH_TOKEN as the sole anthropic auth source', () => {
+    expect(() =>
+      parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-tok' }),
+    ).not.toThrow();
+  });
+
+  it('exposes retained provider keys and nulls absent ones', () => {
+    const env = parseEnv({ ...minimal, OPENAI_API_KEY: 'sk-openai' });
     expect(env.anthropicApiKey).toBe('sk-ant-xxx');
     expect(env.openaiApiKey).toBe('sk-openai');
-    expect(env.geminiApiKey).toBe('g-key');
-    expect(env.mistralApiKey).toBeNull();
+    expect(env.geminiApiKey).toBeNull();
   });
 
   it('throws when no recognized provider key is configured', () => {
     expect(() => parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined })).toThrow(/provider API key/i);
-  });
-
-  it('accepts AWS credentials (Amazon Bedrock) as the sole auth, no API key needed', () => {
-    for (const awsVar of ['AWS_ACCESS_KEY_ID', 'AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK']) {
-      const env = parseEnv({ ...minimal, ANTHROPIC_API_KEY: undefined, [awsVar]: 'x' });
-      expect(env.anthropicApiKey).toBeNull();
-      expect(env.prNumber).toBe(42);
-    }
   });
 
   it('throws when GITHUB_TOKEN is missing', () => {
@@ -125,14 +115,30 @@ describe('parseEnv', () => {
     );
   });
 
-  it('reads MAX_BUDGET: defaults to null, parses positive floats, rejects garbage and negatives', () => {
-    expect(parseEnv(minimal).maxBudgetOverride).toBeNull();
-    expect(parseEnv({ ...minimal, MAX_BUDGET: '' }).maxBudgetOverride).toBeNull();
-    expect(parseEnv({ ...minimal, MAX_BUDGET: '15' }).maxBudgetOverride).toBe(15);
-    expect(parseEnv({ ...minimal, MAX_BUDGET: '0' }).maxBudgetOverride).toBe(0);
-    expect(parseEnv({ ...minimal, MAX_BUDGET: '12.5' }).maxBudgetOverride).toBe(12.5);
-    expect(() => parseEnv({ ...minimal, MAX_BUDGET: 'abc' })).toThrow(/MAX_BUDGET/);
-    expect(() => parseEnv({ ...minimal, MAX_BUDGET: '-5' })).toThrow(/MAX_BUDGET/);
+  it('reads MAX_TOKENS: defaults to undefined, parses positive integers, rejects zero/negatives/non-integers', () => {
+    expect(parseEnv(minimal).maxTokens).toBeUndefined();
+    expect(parseEnv({ ...minimal, MAX_TOKENS: '' }).maxTokens).toBeUndefined();
+    expect(parseEnv({ ...minimal, MAX_TOKENS: '200000' }).maxTokens).toBe(200000);
+    expect(parseEnv({ ...minimal, MAX_TOKENS: '1' }).maxTokens).toBe(1);
+    expect(() => parseEnv({ ...minimal, MAX_TOKENS: '0' })).toThrow(/MAX_TOKENS/);
+    expect(() => parseEnv({ ...minimal, MAX_TOKENS: '-5' })).toThrow(/MAX_TOKENS/);
+    expect(() => parseEnv({ ...minimal, MAX_TOKENS: '12.5' })).toThrow(/MAX_TOKENS/);
+    expect(() => parseEnv({ ...minimal, MAX_TOKENS: 'abc' })).toThrow(/MAX_TOKENS/);
+  });
+
+  it('reads WRILY_GANTRY_BIN: defaults to undefined and surfaces the path when set', () => {
+    expect(parseEnv(minimal).wrilyGantryBin).toBeUndefined();
+    expect(parseEnv({ ...minimal, WRILY_GANTRY_BIN: '' }).wrilyGantryBin).toBeUndefined();
+    expect(parseEnv({ ...minimal, WRILY_GANTRY_BIN: '/usr/local/bin/gantry' }).wrilyGantryBin).toBe(
+      '/usr/local/bin/gantry',
+    );
+  });
+
+  it('reads WRILY_ALLOW_UNKNOWN_MODEL: defaults to false, true for "1" or "true"', () => {
+    expect(parseEnv(minimal).allowUnknownModel).toBe(false);
+    expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: '1' }).allowUnknownModel).toBe(true);
+    expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: '0' }).allowUnknownModel).toBe(false);
+    expect(parseEnv({ ...minimal, WRILY_ALLOW_UNKNOWN_MODEL: 'true' }).allowUnknownModel).toBe(true);
   });
 
   it('populates prAuthorLogin/triggerSource/actor when present and defaults when absent', () => {

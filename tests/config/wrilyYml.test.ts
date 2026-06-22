@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseWrilyYml, applyEnvOverrides } from '../../src/config/wrilyYml.js';
+import { parseWrilyYml, applyEnvOverrides, defaultMaxTokens, DEFAULT_MAX_TOKENS_SINGLE, DEFAULT_MAX_TOKENS_TEAM } from '../../src/config/wrilyYml.js';
 import type { RuntimeEnv, WrilyConfig } from '../../src/config/types.js';
 
 const read = (name: string) => readFileSync(`tests/fixtures/wrily-yml/${name}.yml`, 'utf8');
@@ -12,7 +12,7 @@ describe('parseWrilyYml', () => {
     expect(cfg.mode).toBe('auto');
     expect(cfg.team_threshold).toBe(5);
     expect(cfg.team_threshold_unit).toBe('files');
-    expect(cfg.max_budget_usd).toBeNull();
+    expect(cfg.max_tokens).toBeNull();
     expect(cfg.ignore).toEqual([]);
     expect(cfg.shared_skills).toEqual([]);
     expect(cfg.request_changes).toBe(false);
@@ -27,7 +27,7 @@ describe('parseWrilyYml', () => {
     expect(cfg.mode).toBe('team');
     expect(cfg.team_threshold).toBe(3);
     expect(cfg.team_threshold_unit).toBe('folders');
-    expect(cfg.max_budget_usd).toBe(15);
+    expect(cfg.max_tokens).toBe(3000000);
     expect(cfg.ignore).toEqual(['*.lock', 'vendor/**']);
     expect(cfg.shared_skills).toEqual(['rust-pro']);
     expect(cfg.style).toBe('verbose');
@@ -56,6 +56,12 @@ describe('parseWrilyYml', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/team_threshold_unit/));
     warn.mockRestore();
   });
+
+  it('rejects a non-positive or non-integer max_tokens', () => {
+    expect(() => parseWrilyYml('max_tokens: 0')).toThrow();
+    expect(() => parseWrilyYml('max_tokens: -1')).toThrow();
+    expect(() => parseWrilyYml('max_tokens: 1.5')).toThrow();
+  });
 });
 
 describe('applyEnvOverrides', () => {
@@ -64,7 +70,7 @@ describe('applyEnvOverrides', () => {
     mode: 'auto',
     team_threshold: 5,
     team_threshold_unit: 'files',
-    max_budget_usd: 10,
+    max_tokens: 2_000_000,
     ignore: [],
     shared_skills: [],
     request_changes: false,
@@ -87,11 +93,11 @@ describe('applyEnvOverrides', () => {
     scopeOverride: '',
     modeOverride: '', replyFeedbackOverride: '',
     modelOverride: '',
-    maxBudgetOverride: null,
     dryRun: false,
     prAuthorLogin: '',
     triggerSource: 'push',
     actor: '',
+    allowUnknownModel: false,
     ...over,
   });
 
@@ -99,7 +105,7 @@ describe('applyEnvOverrides', () => {
     const result = applyEnvOverrides(baseCfg, baseEnv());
     expect(result.mode).toBe('auto');
     expect(result.model).toBe('anthropic/claude-opus-4-8');
-    expect(result.max_budget_usd).toBe(10);
+    expect(result.max_tokens).toBe(2_000_000);
   });
 
   it('mode override flips cfg.mode (auto → team)', () => {
@@ -112,19 +118,14 @@ describe('applyEnvOverrides', () => {
     expect(result.model).toBe('openai/gpt-4o');
   });
 
-  it('honors maxBudgetOverride: 0 (not treated as falsy)', () => {
-    const result = applyEnvOverrides(baseCfg, baseEnv({ maxBudgetOverride: 0 }));
-    expect(result.max_budget_usd).toBe(0);
+  it('maxTokens override wins over cfg.max_tokens', () => {
+    const result = applyEnvOverrides(baseCfg, baseEnv({ maxTokens: 5_000_000 }));
+    expect(result.max_tokens).toBe(5_000_000);
   });
 
-  it('maxBudgetOverride null keeps cfg.max_budget_usd', () => {
-    const result = applyEnvOverrides(baseCfg, baseEnv({ maxBudgetOverride: null }));
-    expect(result.max_budget_usd).toBe(10);
-  });
-
-  it('maxBudgetOverride positive overrides cfg.max_budget_usd', () => {
-    const result = applyEnvOverrides(baseCfg, baseEnv({ maxBudgetOverride: 42.5 }));
-    expect(result.max_budget_usd).toBe(42.5);
+  it('maxTokens undefined keeps cfg.max_tokens', () => {
+    const result = applyEnvOverrides(baseCfg, baseEnv({ maxTokens: undefined }));
+    expect(result.max_tokens).toBe(2_000_000);
   });
 
   it('preserves unrelated cfg fields', () => {
@@ -133,5 +134,16 @@ describe('applyEnvOverrides', () => {
     expect(result.style).toBe('terse');
     expect(result.sensitivity).toBe('important');
     expect(result.reply_feedback).toBe('on');
+  });
+});
+
+describe('defaultMaxTokens', () => {
+  it('returns the single default for single and auto modes', () => {
+    expect(defaultMaxTokens('single')).toBe(DEFAULT_MAX_TOKENS_SINGLE);
+    expect(defaultMaxTokens('auto')).toBe(DEFAULT_MAX_TOKENS_SINGLE);
+  });
+
+  it('returns the team default for team mode', () => {
+    expect(defaultMaxTokens('team')).toBe(DEFAULT_MAX_TOKENS_TEAM);
   });
 });

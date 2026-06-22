@@ -8,10 +8,6 @@ const rawEnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
-  GOOGLE_CLOUD_API_KEY: z.string().optional(),
-  MISTRAL_API_KEY: z.string().optional(),
-  AZURE_OPENAI_API_KEY: z.string().optional(),
-  CLOUDFLARE_API_KEY: z.string().optional(),
   GITHUB_TOKEN: z.string().min(1, 'GITHUB_TOKEN is required'),
   PR_NUMBER: z.string().regex(/^[1-9]\d*$/, 'PR_NUMBER must be a positive integer'),
   GITHUB_REPOSITORY: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}\/[A-Za-z0-9._-]{1,100}$/, 'GITHUB_REPOSITORY must be "owner/repo"'),
@@ -36,21 +32,15 @@ const rawEnvSchema = z.object({
       message: "MODE must be one of '', 'auto', 'single', or 'team'",
     }),
   MODEL: z.string().optional().default(''),
-  MAX_BUDGET: z
+  MAX_TOKENS: z
     .string()
     .optional()
     .default('')
-    .refine(
-      (v) => {
-        if (v === '') return true;
-        if (!/^\d+(\.\d+)?$/.test(v)) return false;
-        const n = Number.parseFloat(v);
-        return Number.isFinite(n) && n >= 0;
-      },
-      {
-        message: 'MAX_BUDGET must be empty or a non-negative numeric string',
-      },
-    ),
+    .refine((v) => v === '' || /^[1-9]\d*$/.test(v), {
+      message: 'MAX_TOKENS must be empty or a positive integer',
+    }),
+  WRILY_GANTRY_BIN: z.string().optional(),
+  WRILY_ALLOW_UNKNOWN_MODEL: z.string().optional().default(''),
   DRY_RUN: z.enum(['true', 'false']).default('false'),
   PR_AUTHOR_LOGIN: z.string().default(''),
   WRILY_TRIGGER_SOURCE: z.string().default('push'),
@@ -77,9 +67,8 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
 
   if (!hasAnyProviderAuth(raw)) {
     throw new Error(
-      'No provider API key configured. Set ANTHROPIC_API_KEY (or another provider ' +
-        'key: OPENAI_API_KEY, GEMINI_API_KEY, GOOGLE_CLOUD_API_KEY, MISTRAL_API_KEY, ' +
-        'AZURE_OPENAI_API_KEY, CLOUDFLARE_API_KEY), or AWS credentials for Amazon Bedrock.',
+      'No provider API key configured. Set one of ANTHROPIC_API_KEY, ' +
+        'CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, or GEMINI_API_KEY.',
     );
   }
 
@@ -100,10 +89,6 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     anthropicApiKey: parsed.ANTHROPIC_API_KEY ?? null,
     openaiApiKey: parsed.OPENAI_API_KEY ?? null,
     geminiApiKey: parsed.GEMINI_API_KEY ?? null,
-    googleCloudApiKey: parsed.GOOGLE_CLOUD_API_KEY ?? null,
-    mistralApiKey: parsed.MISTRAL_API_KEY ?? null,
-    azureOpenaiApiKey: parsed.AZURE_OPENAI_API_KEY ?? null,
-    cloudflareApiKey: parsed.CLOUDFLARE_API_KEY ?? null,
     githubToken: parsed.GITHUB_TOKEN,
     prNumber: Number.parseInt(parsed.PR_NUMBER, 10),
     githubRepository: parsed.GITHUB_REPOSITORY,
@@ -116,7 +101,10 @@ export function parseEnv(raw: Record<string, string | undefined>): RuntimeEnv {
     scopeOverride: parsed.SCOPE_OVERRIDE as 'full' | 'delta' | '',
     modeOverride: parsed.MODE as '' | 'auto' | 'single' | 'team',
     modelOverride: parsed.MODEL,
-    maxBudgetOverride: parsed.MAX_BUDGET ? Number.parseFloat(parsed.MAX_BUDGET) : null,
+    maxTokens: parsed.MAX_TOKENS ? Number.parseInt(parsed.MAX_TOKENS, 10) : undefined,
+    wrilyGantryBin: parsed.WRILY_GANTRY_BIN || undefined,
+    allowUnknownModel:
+      parsed.WRILY_ALLOW_UNKNOWN_MODEL === '1' || parsed.WRILY_ALLOW_UNKNOWN_MODEL === 'true',
     dryRun: parsed.DRY_RUN === 'true',
     prAuthorLogin: parsed.PR_AUTHOR_LOGIN,
     triggerSource: parsed.WRILY_TRIGGER_SOURCE,

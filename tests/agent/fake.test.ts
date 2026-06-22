@@ -10,21 +10,21 @@ describe('FakeAgentRunner', () => {
       durationMs: 100,
       tokenUsage: { inputTokens: 10, outputTokens: 20 },
     });
-    const out = await runner.run({ prompt: 'x', model: 'opus', workingDir: '/tmp', env: {} });
+    const out = await runner.run({ prompt: 'x', model: 'opus', maxTokens: 1000, mode: 'single', workingDir: '/tmp', env: {} });
     expect(out.stdout).toBe('canned');
     expect(out.exitCode).toBe(0);
   });
 
   it('records the prompt that was passed', async () => {
     const runner = new FakeAgentRunner({ stdout: '', stderr: '', exitCode: 0, durationMs: 0, tokenUsage: null });
-    await runner.run({ prompt: 'hello', model: 'opus', workingDir: '/tmp', env: {} });
+    await runner.run({ prompt: 'hello', model: 'opus', maxTokens: 1000, mode: 'single', workingDir: '/tmp', env: {} });
     expect(runner.calls[0]?.prompt).toBe('hello');
   });
 
   it('throws when configured to', async () => {
     const runner = new FakeAgentRunner(new Error('boom'));
     await expect(
-      runner.run({ prompt: 'x', model: 'opus', workingDir: '/tmp', env: {} }),
+      runner.run({ prompt: 'x', model: 'opus', maxTokens: 1000, mode: 'single', workingDir: '/tmp', env: {} }),
     ).rejects.toThrow('boom');
   });
 });

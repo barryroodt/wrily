@@ -16,7 +16,7 @@ export type WrilyConfig = {
   mode: ReviewMode;
   team_threshold: number;
   team_threshold_unit: TeamThresholdUnit;
-  max_budget_usd: number | null;
+  max_tokens: number | null;
   ignore: string[];
   shared_skills: string[];
   request_changes: boolean;
@@ -27,16 +27,11 @@ export type WrilyConfig = {
 
 export type RuntimeEnv = {
   // Provider API keys, mirrored from the environment as parsed-env state.
-  // pi reads provider keys from process.env at run time; these back the
-  // auth gate and diagnostics. Bedrock auth is ambient (AWS creds) and not
-  // represented here.
+  // gantry reads provider keys from its process env at run time; these back
+  // the auth gate and diagnostics. Narrowed to wrily's three providers.
   anthropicApiKey?: string | null;
   openaiApiKey?: string | null;
   geminiApiKey?: string | null;
-  googleCloudApiKey?: string | null;
-  mistralApiKey?: string | null;
-  azureOpenaiApiKey?: string | null;
-  cloudflareApiKey?: string | null;
   githubToken: string;
   prNumber: number;
   githubRepository: string;
@@ -49,7 +44,15 @@ export type RuntimeEnv = {
   scopeOverride: 'full' | 'delta' | '';
   modeOverride: '' | 'auto' | 'single' | 'team';
   modelOverride: string;
-  maxBudgetOverride: number | null;
+  /** Token-budget override from `MAX_TOKENS`; `undefined` when unset so the file value wins. */
+  maxTokens?: number;
+  /**
+   * Gantry binary path from `WRILY_GANTRY_BIN` (defaults to `'gantry'` on PATH
+   * at the composition root).
+   */
+  wrilyGantryBin?: string;
+  /** Unknown-model escape hatch from `WRILY_ALLOW_UNKNOWN_MODEL` (`1` or `true`); persists unknown models with `cost_usd = 0` and a loud warn. */
+  allowUnknownModel: boolean;
   dryRun: boolean;
   prAuthorLogin: string;
   triggerSource: string;

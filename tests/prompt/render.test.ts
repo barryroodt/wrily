@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { renderReviewPrompt, renderUnifyPrompt } from '../../src/prompt/render.js';
-import type { PromptContext, UnifyPromptContext } from '../../src/prompt/render.js';
+import { renderReviewPrompt, renderUnifyFile } from '../../src/prompt/render.js';
+import type { PromptContext, UnifyFileContext } from '../../src/prompt/render.js';
 
 const baseCtx: PromptContext = {
   prNumber: 42,
@@ -31,25 +31,26 @@ describe('renderReviewPrompt', () => {
   });
 });
 
-describe('renderUnifyPrompt', () => {
-  const unifyCtx: UnifyPromptContext = {
+describe('renderUnifyFile', () => {
+  const unifyCtx: UnifyFileContext = {
     prNumber: 7,
     githubRepository: 'org/repo',
-    reviewerCount: 3,
-    reviewerReports: '### Reviewer 1: correctness\n\n```json\n{"findings":[]}\n```',
     styleInstruction: '## Style: Terse',
     sensitivityInstruction: '',
     deltaCleanInstruction: '',
     resolveThreadsInstruction: '',
     confidenceInstruction: '',
+    priorFeedbackInstruction: '',
     reviewTypeNote: 'Full review.',
   };
 
-  it('embeds reviewer reports and the merge instruction, leaving no placeholders', () => {
-    const out = renderUnifyPrompt(unifyCtx);
+  it('emits the full four-action JSON contract and leaves no placeholders', () => {
+    const out = renderUnifyFile(unifyCtx);
     expect(out).toContain('PR #7');
-    expect(out).toContain('### Reviewer 1: correctness');
-    expect(out).toContain('3 independent reviewer reports');
+    expect(out).toContain('"action": "new_comment"');
+    expect(out).toContain('"action": "reply_in_thread"');
+    expect(out).toContain('"action": "suppress"');
+    expect(out).toContain('"action": "resolve_thread"');
     expect(out).toMatch(/consolidat|unif|merge/i);
     expect(out).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });

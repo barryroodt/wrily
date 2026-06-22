@@ -23,13 +23,13 @@ When you push a commit to a PR:
 Wrily reads `.wrily.yml` from the root of your repo. All keys optional — defaults work for most repos.
 
 ```yaml
-model: anthropic/claude-opus-4-8  # provider/model slug (default); any pi provider, e.g. openai/gpt-4o
+model: anthropic/claude-opus-4-8  # provider/model slug (default); anthropic / openai / google, e.g. openai/gpt-4o
 mode: auto                # auto (default) | single | team
 team_threshold: 5         # auto-flips to team mode at this many files/folders
 team_threshold_unit: files # files (default) | folders
 style: terse              # terse (default, caveman-review) | verbose (full prose)
 sensitivity: important    # important (default) | minor | critical — severity floor for posted findings
-max_budget_usd: 15        # override the per-mode default ($5 single / $15 team)
+max_tokens: 8000000       # token budget; override the per-mode default (2M single / 8M team)
 request_changes: false    # true → REQUEST_CHANGES on Critical findings; false → COMMENT-only
 rerequest_cooldown_minutes: 0  # cooldown between /wrily review re-requests on the same head SHA, in minutes. 0 disables (default).
 reply_feedback: on        # on (default) | off — when 'on', suppresses replies on disputed prior comments. Set 'off' to disable.
@@ -121,8 +121,8 @@ See `docs/writing-skills.md` for how to author custom skills.
 
 | Mode | When | Default budget | What runs |
 |------|------|---------------|-----------|
-| **Single** | <`team_threshold` files/folders changed | $5 | One reviewer, 8 review criteria |
-| **Team** | ≥`team_threshold` files/folders changed | $15 | Parallel agents (correctness, conventions, contracts, spec-compliance) |
+| **Single** | <`team_threshold` files/folders changed | 2M tokens | One reviewer, 8 review criteria |
+| **Team** | ≥`team_threshold` files/folders changed | 8M tokens | Parallel agents (correctness, conventions, contracts, spec-compliance) |
 | **Auto** (default) | — | varies | Picks single or team based on file scope |
 
 `team_threshold` defaults to 5 and `team_threshold_unit` defaults to `files`; override either per-repo in `.wrily.yml`. With `team_threshold_unit: folders`, Wrily counts distinct changed parent directories such as `src/api` and `src/db`, not only top-level repo folders.
