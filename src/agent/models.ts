@@ -87,6 +87,18 @@ export const MODEL_MANIFEST: readonly ModelManifestEntry[] = [
   },
 ];
 
+/**
+ * Providers whose model catalog is open and dynamic rather than enumerated in
+ * the static manifest above. OpenRouter is an OpenAI-wire gateway fronting
+ * thousands of vendor models behind one key; its ids are vendor-qualified
+ * (`openrouter/anthropic/claude-3.5-sonnet`, `openrouter/<vendor>/<model>:free`)
+ * and change constantly, so wrily accepts any well-formed slug for these
+ * providers and lets gantry/the gateway validate it. They carry no manifest
+ * rates, so usage bills at 0 (correct for `:free` models; paid OpenRouter usage
+ * is not cost-tracked — see `ratesForSlug`).
+ */
+export const OPEN_CATALOG_PROVIDERS: ReadonlySet<string> = new Set(['openrouter']);
+
 /** slug → entry. Built once at module load. */
 const BY_SLUG: Readonly<Record<string, ModelManifestEntry>> = Object.fromEntries(
   MODEL_MANIFEST.map((e) => [e.slug, e]),

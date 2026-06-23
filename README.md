@@ -58,7 +58,7 @@ No workflow YAML, no secrets, no Actions / GHCR perms to grant per-repo.
 Repo root. All keys optional — defaults are sensible.
 
 ```yaml
-model: anthropic/claude-opus-4-8  # anthropic, openai, or google slug (e.g. openai/gpt-4o)
+model: anthropic/claude-opus-4-8  # anthropic, openai, google, or openrouter slug (e.g. openai/gpt-4o, openrouter/anthropic/claude-3.5-sonnet)
 mode: auto               # auto | single | team
 team_threshold: 5        # auto-flips to team mode at this many files/folders
 team_threshold_unit: files # files (default) | folders
@@ -95,7 +95,7 @@ PR opens → `Wrily / review — In progress…` should appear in the checks pan
 
 - Docker
 - `gh` CLI (authenticated: `gh auth login`)
-- A provider API key — one of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (anthropic / openai / google)
+- A provider API key — one of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` (anthropic / openai / google / openrouter)
 
 ### Setup
 
@@ -119,6 +119,9 @@ MODE=team ./wrily your-org/your-repo 2209
 
 # Different model
 MODEL=openai/gpt-4o ./wrily your-org/your-repo 2209
+
+# OpenRouter gateway (vendor-qualified slug; free models cost nothing)
+MODEL=openrouter/deepseek/deepseek-chat-v3-0324:free ./wrily your-org/your-repo 2209
 
 # Verbose comment style (default is terse / caveman-review)
 STYLE=verbose ./wrily your-org/your-repo 2209
@@ -281,7 +284,8 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 | Var | Required | Notes |
 |---|---|---|
 | `GITHUB_TOKEN`, `PR_NUMBER`, `GITHUB_REPOSITORY`, `BASE_BRANCH`, `COMMIT_SHA` | yes | Workflow inputs |
-| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY`) | one | Provider auth (anthropic / openai / google) |
+| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY`) | one | Provider auth (anthropic / openai / google / openrouter) |
+| `OPENROUTER_BASE_URL`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE` | no | Optional OpenRouter overrides; passed through to gantry verbatim |
 | `SHARED_REPO` | no | Optional shared skills repo in owner/repo form |
 | `SHARED_TOKEN` | no | Shared-skills clone token; skipped silently when empty |
 | `MODE`, `MODEL`, `MAX_TOKENS` | no | Layer over `.wrily.yml` |
