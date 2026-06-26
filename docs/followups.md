@@ -61,7 +61,7 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 ## Operational gaps
 
 - No alerting on Worker failure rate or `dispatch-review.yml` failure rate. Cloudflare Notifications + a GitHub Actions failure webhook would cover both.
-- No dashboard for Anthropic spend across reviews. `max_budget_usd` caps per-review cost, but cumulative spend is invisible.
+- No dashboard for provider spend across reviews. `max_tokens` caps the per-review token budget, but cumulative spend is invisible.
 - Re-request race window (two `/wrily review` comments within 5–15 s on the same head SHA dispatch parallel reviews) is accepted per spec but not surfaced in user-facing docs.
 
 ## Security backlog
@@ -70,9 +70,9 @@ Closed [#19](https://github.com/barryroodt/wrily/pull/19) (May 2026) — grouped
 - Pen-test the webhook receiver before broader adoption (HMAC bypass attempts, replay, payload-injection, large-payload DoS).
 - Add a `gitleaks` GitHub Action workflow so history scans run on every push, not just locally.
 
-## Post-pi cutover follow-ups
+## Post-cutover follow-ups
 
-Deferred during the [`claude -p` → in-process pi cutover](https://github.com/barryroodt/wrily/pull/32) (June 2026):
+The [`claude -p` → in-process pi cutover](https://github.com/barryroodt/wrily/pull/32) (June 2026) was itself superseded by the [pi → gantry subprocess cutover](https://github.com/barryroodt/wrily/pull/40) (June 2026): `PiRunner` no longer exists — the agent now runs as the gantry subprocess (`GantryRunner`). The pi-specific items below are historical and must be re-evaluated against gantry before any action:
 
 - **Surface pi provider/auth errors clearly.** `PiRunner` currently lets a failed `prompt()` resolve with empty stdout (e.g. expired API key), which the workflow surfaces downstream as a generic "no \`\`\`json fence" failure comment. Subscribe to pi's `agent_end` / message-error events and throw a typed `ConfigError` / provider error so the failure comment names the cause.
 - **Eval framework.** Fixture-driven agent eval runs (sql-injection probe, delta-clean confirmation, team-mode behaviour, budget-trip) with assertions. Easier under pi than the abandoned Rust sidecar because PiRunner accepts an injected `PiSessionFactory` — replay-style fakes can drive whole reviews in-process and deterministically.

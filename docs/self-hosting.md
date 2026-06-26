@@ -2,7 +2,7 @@
 
 This guide is for **org admins** who want to run Wrily for their own team. Wrily is intentionally not offered as a hosted service — every org runs its own GitHub App + webhook receiver, so your code never traverses someone else's infrastructure.
 
-The end-to-end setup takes ~30 minutes and costs nothing beyond an Anthropic API key (Cloudflare Worker free tier covers the webhook receiver; GitHub Actions free tier covers the reviewer).
+The end-to-end setup takes ~30 minutes and costs nothing beyond a provider API key (Cloudflare Worker free tier covers the webhook receiver; GitHub Actions free tier covers the reviewer).
 
 ## What you're setting up
 
@@ -30,7 +30,7 @@ Three moving parts to own:
 ## Prerequisites
 
 - A GitHub org you administer (or a personal account if you're trialing).
-- An Anthropic API key, or a Claude Code OAuth token.
+- A provider API key — Anthropic, OpenAI, Google, or OpenRouter (or a `CLAUDE_CODE_OAUTH_TOKEN` for the Anthropic default).
 - A Cloudflare account (free plan is fine).
 - Local tooling: `git`, `gh` (authenticated), `pnpm` (`corepack enable`), `wrangler` (installed via `pnpm install` in the worker dir).
 - ~30 minutes.
@@ -95,7 +95,7 @@ gh secret set ANTHROPIC_API_KEY --env anthropic --body '<your-key>' --repo <your
 
 (Or via the UI: **Settings → Environments → anthropic → Add secret**.)
 
-To use a different provider, set that provider's API-key secret instead (`OPENAI_API_KEY` or `GEMINI_API_KEY`) and set `MODEL` to its slug (e.g. `openai/gpt-4o`). Wrily's provider matrix is anthropic / openai / google.
+To use a different provider, set that provider's API-key secret instead (`OPENAI_API_KEY`, `GEMINI_API_KEY`, or `OPENROUTER_API_KEY`) and set `MODEL` to its slug (e.g. `openai/gpt-4o`, `openrouter/anthropic/claude-3.5-sonnet`). Wrily's provider matrix is anthropic / openai / google / openrouter.
 
 ---
 
@@ -230,7 +230,7 @@ A typical handoff message:
 - **Rotation** (App private key, webhook secret) — [`RUNBOOK.md → Rotation`](../integrations/cloudflare-worker/RUNBOOK.md#rotation).
 - **Observability** — `wrangler tail`, Cloudflare dashboard, GitHub App Recent Deliveries panel. Details in the RUNBOOK.
 - **Upgrading Wrily** — `git pull upstream main` on your fork, resolve any conflicts in the workflow files (the references you swapped in step 1 will reappear in some upstream PRs), tag a new `v*` release, redeploy the Worker only if `integrations/cloudflare-worker/` changed.
-- **Cost** — Anthropic API spend per review (token caps configurable via `max_tokens` in `.wrily.yml`). Cloudflare Worker invocations + GitHub Actions minutes both fall well within free tiers for typical org volume.
+- **Cost** — provider API spend per review (token caps configurable via `max_tokens` in `.wrily.yml`). Cloudflare Worker invocations + GitHub Actions minutes both fall well within free tiers for typical org volume.
 
 ## Optional: cost tracking
 

@@ -41,7 +41,7 @@ You review Rust code in the payments-service service, focusing on:
 [Same as other reviewer templates — verdict, issues by severity, strengths]
 ```
 
-**How it gets discovered:** The `agent-team-review` skill scans `.claude/skills/` for skills whose descriptions match file extensions in the diff. When `.rs` files change in `payments-service/`, this skill is picked up.
+**How it gets discovered:** In team mode, Wrily's reviewer scans `.claude/skills/` for skills whose descriptions match file extensions in the diff. When `.rs` files change in `payments-service/`, this skill is picked up.
 
 ### Codebase Context
 

@@ -149,8 +149,8 @@ The Mastra entrypoint clones the target repo when no checkout exists in the cont
 
 1. **Check run vs PR comment for results.** PR review comments are the default. Adding a check run on the head commit gives a gated "Wrily Review / passed|failing" status that branch protection can require.
 2. **Consumer opt-out.** A consumer can uninstall the App. Is that sufficient, or do we want a per-PR label like `[skip-wrily]`?
-3. **Failure handling.** If the review fails (Claude timeout, budget exceeded), do we post a sentinel comment or fail silently? The TypeScript entrypoint logs and summarizes failure modes while respecting DRY_RUN.
-4. **Observability / billing attribution.** Each review is one Claude Code session. Tag requests with `{consumer_repo, pr_number}` so usage can be attributed back to the team whose PR triggered it.
+3. **Failure handling.** If the review fails (agent timeout, budget exceeded), do we post a sentinel comment or fail silently? The TypeScript entrypoint logs and summarizes failure modes while respecting DRY_RUN.
+4. **Observability / billing attribution.** Each review is one gantry subprocess run. Tag requests with `{consumer_repo, pr_number}` so usage can be attributed back to the team whose PR triggered it.
 
 ## What this replaces
 

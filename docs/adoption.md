@@ -6,7 +6,7 @@
 
 Ask your org's Wrily admin to **install the GitHub App** on your repo. That's it. Open a PR and Wrily reviews it automatically.
 
-No workflow YAML. No secrets. No per-repo Actions/GHCR permissions. No `ANTHROPIC_API_KEY` to plumb — your org admin handles that once.
+No workflow YAML. No secrets. No per-repo Actions/GHCR permissions. No provider API key to plumb — your org admin handles that once.
 
 Behind the scenes: GitHub delivers the `pull_request` event to the App's webhook → a Cloudflare Worker verifies the HMAC, mints minimum-scope installation tokens (Wrily runner / consumer / optional shared skills), and dispatches `repository_dispatch(review-pr)` at your org's fork of Wrily → Wrily's Actions workflow clones the consumer repo and optional shared skills repo, runs the review, posts comments and a `Wrily / review` Check Run back to the PR using the consumer-scoped token. See `docs/design/webhook-architecture.md` for the full flow + security model.
 
@@ -42,7 +42,7 @@ ignore:
   - "**/*.pb.go"
 
 shared_skills:            # Opt-in org skills from your optional shared skills repo;
-  - rust-pro              # this list controls which skills are explicitly loaded into Claude)
+  - rust-pro              # this list controls which skills are explicitly loaded into the reviewer's skill set)
   - security-standards
 ```
 
@@ -69,7 +69,7 @@ The default is `sensitivity: important`. Repos that want every Minor finding inl
 
 ### `CLAUDE.md` / `AGENTS.md`
 
-Claude reads these naturally for project conventions. Add review-specific guidance:
+The reviewer reads these for project conventions. Add review-specific guidance:
 
 ```markdown
 ## Code Review Focus
@@ -115,7 +115,7 @@ See `docs/writing-skills.md` for how to author custom skills.
 
 ### Org skills via shared
 
-`<your-shared-skills-repo>/skills/<name>/SKILL.md` skills are available to any repo that opts in via the `shared_skills:` list. Configure the shared skills repo with `SHARED_REPO`; when it is unset, Wrily runs without org-context skills. `shared_skills:` only controls which skills get explicitly loaded into Claude's skill set for the review.
+`<your-shared-skills-repo>/skills/<name>/SKILL.md` skills are available to any repo that opts in via the `shared_skills:` list. Configure the shared skills repo with `SHARED_REPO`; when it is unset, Wrily runs without org-context skills. `shared_skills:` only controls which skills get explicitly loaded into the reviewer's skill set for the review.
 
 ## Review Modes
 
@@ -158,7 +158,7 @@ Add `[skip-wrily]` to the PR title. The workflow skips any PR with that marker.
 ## FAQ
 
 **Q: How much does it cost per review?**
-Single mode: ~$1–3 for typical PRs. Team mode: ~$5–10. Budget caps prevent runaway costs.
+Depends on your model/provider. With the default `anthropic/claude-opus-4-8`, typical PRs run a few dollars (single) to ~$5–10 (team); cheaper models (Sonnet, Haiku, GPT-4o, Gemini) cost less, and OpenRouter free models cost nothing. The `max_tokens` budget caps runaway cost.
 
 **Q: Can it approve PRs?**
 No. Wrily only posts `COMMENT` reviews by default. Enable `request_changes: true` in `.wrily.yml` to allow `REQUEST_CHANGES` for Critical findings.
@@ -174,13 +174,13 @@ Reviews still run, just without org context. If `SHARED_REPO` is unset, no share
 2. App settings → **Advanced → Recent Deliveries** → ground truth for what reached the receiver
 3. Worker logs: admin runs `pnpm tail` from `integrations/cloudflare-worker/`
 
-Wrily posts a fallback comment on the PR when a review can't complete (timeout, budget exceeded, Anthropic API failure).
+Wrily posts a fallback comment on the PR when a review can't complete (timeout, budget exceeded, provider API failure).
 
 **Q: How do I switch from n8n to the Cloudflare Worker?**
 The receiver layer in `integrations/` ships both. The App's webhook URL is the only thing that changes. See `integrations/README.md` for the comparison and `integrations/cloudflare-worker/RUNBOOK.md` for the deploy steps.
 
 **Q: Why are GitHub Actions runs in `barryroodt/wrily` and not in my repo?**
-The App centralizes the runner in `barryroodt/wrily` so consumer repos don't need to plumb `ANTHROPIC_API_KEY` or grant Actions/GHCR permissions. The review activity (comments, Check Run) lands on the consumer PR via the consumer-scoped install token.
+The App centralizes the runner in `barryroodt/wrily` so consumer repos don't need to plumb a provider API key or grant Actions/GHCR permissions. The review activity (comments, Check Run) lands on the consumer PR via the consumer-scoped install token.
 
 ## Re-requesting a review
 
