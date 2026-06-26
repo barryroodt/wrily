@@ -1,6 +1,6 @@
 # Wrily
 
-AI-powered code review agent using Claude Code.
+AI-powered code review agent for GitHub pull requests, powered by the in-house [gantry](https://github.com/barryroodt/gantry) agent harness — provider-agnostic (Anthropic, OpenAI, Google, or OpenRouter).
 
 ## Features
 
@@ -75,7 +75,7 @@ ignore:
 
 # Opt-in org skills from your optional shared skills repo. When SHARED_REPO is
 # configured, the repo is cloned for context; this list controls which skills
-# are explicitly loaded into Claude's skill set for the review.
+# are explicitly loaded into the reviewer's skill set for the review.
 shared_skills:
   - rust-pro
   - security-standards
@@ -178,7 +178,7 @@ See [docs/writing-skills.md](docs/writing-skills.md) for details.
 
 ## CLAUDE.md hooks
 
-Claude reads project-root `CLAUDE.md` naturally. Add review-specific guidance:
+Wrily's reviewer reads project-root `CLAUDE.md` / `AGENTS.md` for project conventions. Add review-specific guidance:
 
 ```markdown
 ## Code Review Focus
@@ -296,7 +296,7 @@ Env vars consumed (canonical names — see `src/config/env.ts`):
 | `WRILY_BOT_LOGIN` | no | Default `wrily` |
 | `REVIEW_ROUND_INDEX` | no | Workflow computes from prior handoff markers; this env is a fallback |
 | `DRY_RUN` | no | `'true'` → log body instead of posting |
-| `WRILY_AGENT_TIMEOUT_MS` | no | Override gantry subprocess timeout (default 30 min) |
+| `WRILY_AGENT_TIMEOUT_MS` | no | Override gantry subprocess timeout (default 12 min) |
 | `WRILY_DEBUG_AGENT_OUTPUT` | no | Path to dump raw model stdout/stderr |
 | `WRILY_GANTRY_BIN` | no | Path to a local gantry binary (default: the binary bundled in the image) |
 | `WRILY_ALLOW_UNKNOWN_MODEL` | no | `'1'` → allow a model slug absent from the rate manifest (cost rows = 0) |
