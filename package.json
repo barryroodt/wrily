@@ -22,7 +22,7 @@
     "@types/node": "22.20.0",
     "@vitest/coverage-v8": "4.1.9",
     "typescript": "5.9.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=22"
