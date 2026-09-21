@@ -4,7 +4,7 @@
 ARG GANTRY_VERSION
 ARG TARGETARCH
 
-FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS builder
 
 WORKDIR /build
 
@@ -37,7 +37,7 @@ RUN set -eux; \
     tar -xzf "${asset}" -C /usr/local/bin gantry
 
 # ----- Runtime image -----
-FROM node:22-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 
 # Pinned gantry binary from the fetch stage.
 COPY --from=gantry-fetch /usr/local/bin/gantry /usr/local/bin/gantry
